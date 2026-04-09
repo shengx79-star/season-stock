@@ -33,6 +33,9 @@ interface CandleData {
   ma5?: number;
   ma14?: number;
   ma20?: number;
+  macdDIF?: number;
+  macdDEA?: number;
+  macdBar?: number;
 }
 
 const UP_COLOR = "#22c55e";
