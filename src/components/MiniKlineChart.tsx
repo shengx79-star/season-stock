@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import {
   ComposedChart,
   Bar,
+  Line,
   ResponsiveContainer,
   YAxis,
   XAxis,
@@ -29,12 +30,18 @@ interface CandleData {
   volume: number;
   isUp: boolean;
   body: [number, number];
+  ma5?: number;
+  ma14?: number;
+  ma20?: number;
 }
 
 const UP_COLOR = "#22c55e";
 const DOWN_COLOR = "#ef4444";
 const UP_COLOR_LIGHT = "rgba(34,197,94,0.35)";
 const DOWN_COLOR_LIGHT = "rgba(239,68,68,0.35)";
+const MA5_COLOR = "#f59e0b";   // amber
+const MA14_COLOR = "#3b82f6";  // blue
+const MA20_COLOR = "#a855f7";  // purple
 
 // Custom candlestick shape
 const CandlestickShape = (props: any) => {
@@ -82,11 +89,33 @@ const CandlestickShape = (props: any) => {
   );
 };
 
-function prepareData(dailyBars: Candle[], bars: number, padding: number) {
-  const recent = dailyBars.slice(-bars);
-  const d: CandleData[] = recent.map((c) => {
+function computeMA(closes: number[], period: number): (number | undefined)[] {
+  return closes.map((_, i) => {
+    if (i < period - 1) return undefined;
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += closes[j];
+    return sum / period;
+  });
+}
+
+function prepareData(dailyBars: Candle[], bars: number, padding: number, withMA = false) {
+  // Take extra bars before the window for MA warmup
+  const warmup = withMA ? 20 : 0;
+  const startIdx = Math.max(0, dailyBars.length - bars - warmup);
+  const extended = dailyBars.slice(startIdx);
+  const closes = extended.map((c) => c.close);
+
+  const ma5 = withMA ? computeMA(closes, 5) : [];
+  const ma14 = withMA ? computeMA(closes, 14) : [];
+  const ma20 = withMA ? computeMA(closes, 20) : [];
+
+  // Only keep the last `bars` entries
+  const offset = extended.length - Math.min(bars, dailyBars.length);
+  const d: CandleData[] = [];
+  for (let i = offset; i < extended.length; i++) {
+    const c = extended[i];
     const isUp = c.close >= c.open;
-    return {
+    d.push({
       date: c.date,
       open: c.open,
       close: c.close,
@@ -95,8 +124,12 @@ function prepareData(dailyBars: Candle[], bars: number, padding: number) {
       volume: c.volume,
       isUp,
       body: isUp ? [c.open, c.close] : [c.close, c.open],
-    };
-  });
+      ma5: ma5[i],
+      ma14: ma14[i],
+      ma20: ma20[i],
+    });
+  }
+
   const allLows = d.map((c) => c.low);
   const allHighs = d.map((c) => c.high);
   const min = Math.min(...allLows) * (1 - padding);
@@ -149,7 +182,7 @@ export const KlineChart = ({
   height = 280,
   className = "",
 }: MiniKlineChartProps) => {
-  const { data, domain, maxVol } = useMemo(() => prepareData(dailyBars, bars, 0.005), [dailyBars, bars]);
+  const { data, domain, maxVol } = useMemo(() => prepareData(dailyBars, bars, 0.005, true), [dailyBars, bars]);
 
   if (data.length < 2) return null;
 
@@ -178,6 +211,13 @@ export const KlineChart = ({
                       <span className="text-muted-foreground">低</span><span className="text-foreground font-mono">{d.low.toFixed(2)}</span>
                       <span className="text-muted-foreground">量</span><span className="text-foreground font-mono">{(d.volume / 10000).toFixed(0)}万</span>
                     </div>
+                    {(d.ma5 || d.ma14 || d.ma20) && (
+                      <div className="mt-1 pt-1 border-t border-border flex gap-3">
+                        {d.ma5 != null && <span style={{ color: MA5_COLOR }}>MA5: {d.ma5.toFixed(2)}</span>}
+                        {d.ma14 != null && <span style={{ color: MA14_COLOR }}>MA14: {d.ma14.toFixed(2)}</span>}
+                        {d.ma20 != null && <span style={{ color: MA20_COLOR }}>MA20: {d.ma20.toFixed(2)}</span>}
+                      </div>
+                    )}
                   </div>
                 );
               }}
@@ -185,6 +225,9 @@ export const KlineChart = ({
             <Bar dataKey="body" shape={<CandlestickShape />} isAnimationActive={false}>
               {data.map((_, i) => <Cell key={i} />)}
             </Bar>
+            <Line type="monotone" dataKey="ma5" stroke={MA5_COLOR} strokeWidth={1} dot={false} isAnimationActive={false} connectNulls />
+            <Line type="monotone" dataKey="ma14" stroke={MA14_COLOR} strokeWidth={1} dot={false} isAnimationActive={false} connectNulls />
+            <Line type="monotone" dataKey="ma20" stroke={MA20_COLOR} strokeWidth={1} dot={false} isAnimationActive={false} connectNulls />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
