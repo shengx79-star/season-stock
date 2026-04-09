@@ -166,30 +166,13 @@ export const StockAnalysis = ({ stock, classification, dailyBars, onBack }: Stoc
       {classification && classification.notes.length > 0 && (
         <div className="rounded-2xl border border-border p-6 mb-6">
           <h3 className="font-medium text-foreground mb-3">📋 分类依据</h3>
-          {(() => {
-            const grouped: Record<string, string[]> = {};
-            const labels: Record<string, string> = { "趋势": "📈 趋势 (TREND)", "转折": "🔄 转折 (TURN)", "扩展": "📊 扩展 (EXT)", "周线": "📅 周线 (WEEKLY)", "门控": "🚧 门控", "其他": "📝 其他" };
-            for (const note of classification.notes) {
-              const cat = note.startsWith("趋势") ? "趋势" : note.startsWith("转折") ? "转折" : note.startsWith("扩展") ? "扩展" : note.startsWith("周线") ? "周线" : note.startsWith("门控") ? "门控" : "其他";
-              (grouped[cat] ??= []).push(note);
-            }
-            return Object.entries(grouped).map(([cat, notes]) => (
-              <div key={cat} className="mb-3 last:mb-0">
-                <p className="text-xs font-medium text-foreground mb-1">{labels[cat] || cat}</p>
-                <div className="space-y-0.5 pl-3 border-l-2 border-border">
-                  {notes.map((note, i) => {
-                    const arrow = note.includes("→");
-                    const season = note.includes("spring") ? "spring" : note.includes("summer") ? "summer" : note.includes("autumn") ? "autumn" : note.includes("winter") ? "winter" : null;
-                    return (
-                      <p key={i} className={`text-xs leading-relaxed ${season ? `text-${season}-foreground` : "text-muted-foreground"}`}>
-                        {arrow ? "→ " : "• "}{note.replace(/^(趋势|转折|扩展|周线|门控): /, "")}
-                      </p>
-                    );
-                  })}
-                </div>
-              </div>
-            ));
-          })()}
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {classification.notes.map((note, i) => (
+              <p key={i} className="text-xs text-muted-foreground leading-relaxed">
+                • {note}
+              </p>
+            ))}
+          </div>
         </div>
       )}
 
