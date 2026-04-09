@@ -33,15 +33,22 @@ interface CandleData {
   ma5?: number;
   ma14?: number;
   ma20?: number;
+  macdDIF?: number;
+  macdDEA?: number;
+  macdBar?: number;
 }
 
 const UP_COLOR = "#22c55e";
 const DOWN_COLOR = "#ef4444";
 const UP_COLOR_LIGHT = "rgba(34,197,94,0.35)";
 const DOWN_COLOR_LIGHT = "rgba(239,68,68,0.35)";
-const MA5_COLOR = "#f59e0b";   // amber
-const MA14_COLOR = "#3b82f6";  // blue
-const MA20_COLOR = "#a855f7";  // purple
+const MA5_COLOR = "#f59e0b";
+const MA14_COLOR = "#3b82f6";
+const MA20_COLOR = "#a855f7";
+const DIF_COLOR = "#3b82f6";
+const DEA_COLOR = "#f59e0b";
+const MACD_UP = "rgba(34,197,94,0.7)";
+const MACD_DOWN = "rgba(239,68,68,0.7)";
 
 // Custom candlestick shape
 const CandlestickShape = (props: any) => {
@@ -98,9 +105,26 @@ function computeMA(closes: number[], period: number): (number | undefined)[] {
   });
 }
 
+function computeEMA(data: number[], period: number): number[] {
+  const k = 2 / (period + 1);
+  const ema: number[] = [data[0]];
+  for (let i = 1; i < data.length; i++) {
+    ema.push(data[i] * k + ema[i - 1] * (1 - k));
+  }
+  return ema;
+}
+
+function computeMACD(closes: number[]): { dif: number[]; dea: number[]; bar: number[] } {
+  const ema12 = computeEMA(closes, 12);
+  const ema26 = computeEMA(closes, 26);
+  const dif = ema12.map((v, i) => v - ema26[i]);
+  const dea = computeEMA(dif, 9);
+  const bar = dif.map((v, i) => (v - dea[i]) * 2);
+  return { dif, dea, bar };
+}
+
 function prepareData(dailyBars: Candle[], bars: number, padding: number, withMA = false) {
-  // Take extra bars before the window for MA warmup
-  const warmup = withMA ? 20 : 0;
+  const warmup = withMA ? 35 : 0; // extra warmup for MACD (26+9)
   const startIdx = Math.max(0, dailyBars.length - bars - warmup);
   const extended = dailyBars.slice(startIdx);
   const closes = extended.map((c) => c.close);
@@ -108,8 +132,8 @@ function prepareData(dailyBars: Candle[], bars: number, padding: number, withMA 
   const ma5 = withMA ? computeMA(closes, 5) : [];
   const ma14 = withMA ? computeMA(closes, 14) : [];
   const ma20 = withMA ? computeMA(closes, 20) : [];
+  const macd = withMA ? computeMACD(closes) : null;
 
-  // Only keep the last `bars` entries
   const offset = extended.length - Math.min(bars, dailyBars.length);
   const d: CandleData[] = [];
   for (let i = offset; i < extended.length; i++) {
@@ -127,6 +151,9 @@ function prepareData(dailyBars: Candle[], bars: number, padding: number, withMA 
       ma5: ma5[i],
       ma14: ma14[i],
       ma20: ma20[i],
+      macdDIF: macd?.dif[i],
+      macdDEA: macd?.dea[i],
+      macdBar: macd?.bar[i],
     });
   }
 
@@ -174,20 +201,35 @@ export const MiniKlineChart = ({
   );
 };
 
-/** Detail page: candlestick + volume */
+// MACD bar shape
+const MacdBarShape = (props: any) => {
+  const { x, y, width, height, payload } = props;
+  if (!payload || payload.macdBar == null) return null;
+  const color = payload.macdBar >= 0 ? MACD_UP : MACD_DOWN;
+  return (
+    <rect x={x} y={y} width={width} height={Math.abs(height)} fill={color} rx={0.5} />
+  );
+};
+
+/** Detail page: candlestick + volume + MACD */
 export const KlineChart = ({
   dailyBars,
   season,
   bars = 90,
-  height = 280,
+  height = 340,
   className = "",
 }: MiniKlineChartProps) => {
   const { data, domain, maxVol } = useMemo(() => prepareData(dailyBars, bars, 0.005, true), [dailyBars, bars]);
 
   if (data.length < 2) return null;
 
-  const candleHeight = Math.round(height * 0.72);
-  const volumeHeight = Math.round(height * 0.28);
+  const candleHeight = Math.round(height * 0.58);
+  const volumeHeight = Math.round(height * 0.20);
+  const macdHeight = Math.round(height * 0.22);
+
+  // MACD domain
+  const macdVals = data.filter(d => d.macdDIF != null).flatMap(d => [d.macdDIF!, d.macdDEA!, d.macdBar!]);
+  const macdMax = macdVals.length > 0 ? Math.max(...macdVals.map(Math.abs)) * 1.1 : 1;
 
   return (
     <div className={className}>
@@ -218,6 +260,13 @@ export const KlineChart = ({
                         {d.ma20 != null && <span style={{ color: MA20_COLOR }}>MA20: {d.ma20.toFixed(2)}</span>}
                       </div>
                     )}
+                    {d.macdDIF != null && (
+                      <div className="mt-1 pt-1 border-t border-border flex gap-3">
+                        <span style={{ color: DIF_COLOR }}>DIF: {d.macdDIF.toFixed(3)}</span>
+                        <span style={{ color: DEA_COLOR }}>DEA: {d.macdDEA!.toFixed(3)}</span>
+                        <span style={{ color: d.macdBar! >= 0 ? UP_COLOR : DOWN_COLOR }}>MACD: {d.macdBar!.toFixed(3)}</span>
+                      </div>
+                    )}
                   </div>
                 );
               }}
@@ -241,6 +290,21 @@ export const KlineChart = ({
             <Bar dataKey="volume" shape={<VolumeBarShape />} isAnimationActive={false}>
               {data.map((_, i) => <Cell key={i} />)}
             </Bar>
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* MACD chart */}
+      <div style={{ height: macdHeight }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={{ top: 0, right: 4, bottom: 0, left: 4 }} barGap={0} barCategoryGap="15%">
+            <YAxis domain={[-macdMax, macdMax]} hide />
+            <XAxis dataKey="date" hide />
+            <Bar dataKey="macdBar" shape={<MacdBarShape />} isAnimationActive={false}>
+              {data.map((_, i) => <Cell key={i} />)}
+            </Bar>
+            <Line type="monotone" dataKey="macdDIF" stroke={DIF_COLOR} strokeWidth={1} dot={false} isAnimationActive={false} connectNulls />
+            <Line type="monotone" dataKey="macdDEA" stroke={DEA_COLOR} strokeWidth={1} dot={false} isAnimationActive={false} connectNulls />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
