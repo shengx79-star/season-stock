@@ -4,18 +4,14 @@ import { Candle } from "./stockClassifier";
 /**
  * AllTick API product code mapping
  * A-shares: 603899.SH (Shanghai), 002140.SZ (Shenzhen)
- * HK stocks: 700.HK (remove leading zeros)
+ * HK stocks: 1801.HK (keep original digits, no leading zero removal)
  */
 export function toAllTickCode(symbol: string): string {
-  // HK stock: starts with 0 and length <= 5, or is known HK format
-  if (/^0\d{3,4}$/.test(symbol)) {
-    // Remove leading zeros: 00700 -> 700, 00981 -> 981, 00992 -> 992
-    const hkCode = symbol.replace(/^0+/, '');
-    return `${hkCode}.HK`;
-  }
-  if (/^[1-9]\d{3,4}$/.test(symbol) && !symbol.startsWith('6') && !symbol.startsWith('0') && !symbol.startsWith('3')) {
-    // Likely HK stock like 1801, 1919, 2331, 3690
-    return `${symbol}.HK`;
+  // HK stock patterns from our pool: 00700, 00981, 00992, 01801, 01919, 02331, 03690
+  if (/^0[0-9]{4}$/.test(symbol)) {
+    // 5-digit HK: remove one leading zero -> 0700.HK, 0981.HK etc
+    // Actually AllTick uses: 700.HK (no leading zeros at all)
+    return `${parseInt(symbol, 10)}.HK`;
   }
   // A-share Shanghai: starts with 6
   if (symbol.startsWith('6')) {
@@ -25,24 +21,7 @@ export function toAllTickCode(symbol: string): string {
   if (symbol.startsWith('0') || symbol.startsWith('3')) {
     return `${symbol}.SZ`;
   }
-  // Fallback
   return symbol;
-}
-
-// Determine market from original symbol
-function isHKStock(symbol: string): boolean {
-  // Known HK patterns from the stock pool
-  return /^0[0-9]{3,4}$/.test(symbol) || 
-         ['01801', '01919', '02331', '03690'].includes(symbol);
-}
-
-export function toAllTickCodeSmart(symbol: string): string {
-  if (isHKStock(symbol)) {
-    const hkCode = symbol.replace(/^0+/, '');
-    return `${hkCode}.HK`;
-  }
-  if (symbol.startsWith('6')) return `${symbol}.SH`;
-  return `${symbol}.SZ`;
 }
 
 interface AllTickKline {
@@ -77,67 +56,79 @@ interface CacheEntry {
 }
 
 const cache = new Map<string, CacheEntry>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
-export async function fetchKlineData(
-  symbols: string[]
-): Promise<Map<string, { dailyBars: Candle[]; weeklyBars: Candle[] }>> {
-  const result = new Map<string, { dailyBars: Candle[]; weeklyBars: Candle[] }>();
+// Rate limiter: track last request time
+let lastRequestTime = 0;
+const MIN_INTERVAL = 11000; // 11 seconds for free tier
+
+async function rateLimitedFetch(code: string, kline_type: number, kline_num: number): Promise<AllTickKline[]> {
+  // Wait if needed
   const now = Date.now();
-
-  // Check cache first
-  const uncachedSymbols: string[] = [];
-  for (const sym of symbols) {
-    const cached = cache.get(sym);
-    if (cached && now - cached.fetchedAt < CACHE_TTL) {
-      result.set(sym, { dailyBars: cached.dailyBars, weeklyBars: cached.weeklyBars });
-    } else {
-      uncachedSymbols.push(sym);
-    }
+  const elapsed = now - lastRequestTime;
+  if (elapsed < MIN_INTERVAL) {
+    await new Promise((r) => setTimeout(r, MIN_INTERVAL - elapsed));
   }
+  lastRequestTime = Date.now();
 
-  if (uncachedSymbols.length === 0) return result;
-
-  // Convert to AllTick codes
-  const allTickCodes = uncachedSymbols.map(toAllTickCodeSmart);
-
-  // Fetch daily data (kline_type=8, 120 bars)
-  const dailyResp = await supabase.functions.invoke('fetch-kline', {
-    body: { symbols: allTickCodes, kline_type: 8, kline_num: 120 },
+  const { data, error } = await supabase.functions.invoke('fetch-kline', {
+    body: { code, kline_type, kline_num },
   });
 
-  // Fetch weekly data (kline_type=9, 35 bars)
-  const weeklyResp = await supabase.functions.invoke('fetch-kline', {
-    body: { symbols: allTickCodes, kline_type: 9, kline_num: 35 },
-  });
-
-  const dailyData = dailyResp.data?.data || {};
-  const weeklyData = weeklyResp.data?.data || {};
-
-  for (let i = 0; i < uncachedSymbols.length; i++) {
-    const sym = uncachedSymbols[i];
-    const atCode = allTickCodes[i];
-
-    const dailyKlines: AllTickKline[] = dailyData[atCode]?.klines || [];
-    const weeklyKlines: AllTickKline[] = weeklyData[atCode]?.klines || [];
-
-    const dailyBars = dailyKlines.map(toCandle).sort((a, b) => a.date.localeCompare(b.date));
-    const weeklyBars = weeklyKlines.map(toCandle).sort((a, b) => a.date.localeCompare(b.date));
-
-    // Cache the result
-    cache.set(sym, { dailyBars, weeklyBars, fetchedAt: now });
-    result.set(sym, { dailyBars, weeklyBars });
+  if (error) {
+    console.error(`Edge function error for ${code}:`, error);
+    return [];
   }
 
-  return result;
+  return data?.klines || [];
 }
 
 /**
- * Fetch kline for a single stock
+ * Fetch kline for a single stock (daily + weekly)
+ * Uses rate limiting and caching
  */
 export async function fetchSingleKline(
   symbol: string
 ): Promise<{ dailyBars: Candle[]; weeklyBars: Candle[] }> {
-  const map = await fetchKlineData([symbol]);
-  return map.get(symbol) || { dailyBars: [], weeklyBars: [] };
+  // Check cache
+  const cached = cache.get(symbol);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
+    return { dailyBars: cached.dailyBars, weeklyBars: cached.weeklyBars };
+  }
+
+  const atCode = toAllTickCode(symbol);
+
+  // Fetch daily (kline_type=8)
+  const dailyKlines = await rateLimitedFetch(atCode, 8, 120);
+  
+  // Fetch weekly (kline_type=9)  
+  const weeklyKlines = await rateLimitedFetch(atCode, 9, 35);
+
+  const dailyBars = dailyKlines.map(toCandle).sort((a, b) => a.date.localeCompare(b.date));
+  const weeklyBars = weeklyKlines.map(toCandle).sort((a, b) => a.date.localeCompare(b.date));
+
+  // Cache
+  cache.set(symbol, { dailyBars, weeklyBars, fetchedAt: Date.now() });
+
+  return { dailyBars, weeklyBars };
+}
+
+/**
+ * Batch fetch is not practical with free tier rate limits.
+ * This fetches nothing - data loads on-demand per stock.
+ */
+export async function fetchKlineData(
+  symbols: string[]
+): Promise<Map<string, { dailyBars: Candle[]; weeklyBars: Candle[] }>> {
+  const result = new Map<string, { dailyBars: Candle[]; weeklyBars: Candle[] }>();
+
+  // Only return cached data for batch requests (list view)
+  for (const sym of symbols) {
+    const cached = cache.get(sym);
+    if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
+      result.set(sym, { dailyBars: cached.dailyBars, weeklyBars: cached.weeklyBars });
+    }
+  }
+
+  return result;
 }
