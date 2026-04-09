@@ -153,7 +153,7 @@ const Index = () => {
             <input
               ref={inputRef}
               value={query}
-              onChange={(e) => { setQuery(e.target.value); if (hasSearched) setHasSearched(true); }}
+              onChange={(e) => setQuery(e.target.value)}
               className="search-input pl-11 pr-10 py-2.5 text-sm"
               placeholder="输入股票代码添加，或搜索名称..."
             />
@@ -317,7 +317,7 @@ const Index = () => {
             ) : (
               <button
                 type="button"
-                onClick={() => { setQuery(""); setHasSearched(true); }}
+                onClick={() => { setQuery(""); setCommittedQuery(""); setHasSearched(true); }}
                 className="px-6 py-2.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:shadow-sm hover:border-border border border-transparent transition-all"
               >
                 查看全部
