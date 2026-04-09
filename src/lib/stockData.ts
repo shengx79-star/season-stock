@@ -11,7 +11,7 @@ export interface Stock {
   marketCap: string;
   pe: number;
   sector: string;
-  inPortfolio: boolean;
+  inPortfolio?: boolean;
 }
 
 export const seasonLabels: Record<Season, string> = {
