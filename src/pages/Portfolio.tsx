@@ -44,7 +44,8 @@ const actionBorderColors: Record<ActionType, string> = {
 const Portfolio = () => {
   const { stocks: stockPool, togglePortfolio } = useStockPool();
   const { config, positions, loading: portfolioLoading, updateConfig, upsertPosition, removePosition } = usePortfolio();
-  const { results: classifications, dailyBarsMap } = useStockClassifications(stockPool.filter(s => s.inPortfolio));
+  const { results: allClassifications } = useStockClassifications(stockPool);
+  const { results: classifications, dailyBarsMap } = useStockClassifications(portfolioStocks);
 
   const [showConfig, setShowConfig] = useState(false);
   const [editTotalAssets, setEditTotalAssets] = useState("");
