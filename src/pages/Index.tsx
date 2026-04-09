@@ -120,6 +120,7 @@ const Index = () => {
     if (codeNotInPool) {
       handleLookupAndAdd();
     } else {
+      setCommittedQuery(query);
       setHasSearched(true);
       setSelectedStock(null);
     }
