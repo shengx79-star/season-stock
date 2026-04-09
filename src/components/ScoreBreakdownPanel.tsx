@@ -37,7 +37,7 @@ const CATEGORY_EXPLANATIONS: Record<string, { title: string; desc: string; detai
     ],
   },
   EXT: {
-    title: "扩展评分",
+    title: "拓展评分",
     desc: "通过布林带、BIAS和日内涨跌幅捕捉极端状态",
     details: [
       "%B > 0.5 → summer +1",
@@ -69,8 +69,8 @@ function CategoryLabel({ category }: { category: string }) {
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="w-16 text-muted-foreground font-medium shrink-0 cursor-help flex items-center gap-0.5">
-            {category}
+          <span className="w-[72px] text-muted-foreground font-medium shrink-0 cursor-help flex items-center gap-0.5">
+            {info.title}
             <Info className="w-3 h-3 text-muted-foreground/50" />
           </span>
         </TooltipTrigger>
@@ -114,7 +114,7 @@ function ScoreRow({ label, scores, cap, notes }: { label: string; scores: StageS
         </div>
       </div>
       {relevantNotes.length > 0 && (
-        <div className="ml-[72px] space-y-0">
+        <div className="ml-20 space-y-0">
           {relevantNotes.map((note, i) => (
             <div key={i} className="text-[10px] text-muted-foreground/70 leading-tight">
               • {note.replace(prefix + " ", "")}
@@ -171,7 +171,7 @@ export const ScoreBreakdownPanel = ({ result }: ScoreBreakdownPanelProps) => {
       <div>
         <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">评分明细</h4>
         <div className="space-y-1.5">
-          <div className="grid grid-cols-4 gap-1 text-center mb-1 ml-[72px]">
+          <div className="grid grid-cols-4 gap-1 text-center mb-1 ml-20">
             {STAGES.map((s) => (
               <span key={s} className="text-xs text-muted-foreground">{seasonEmojis[s]}</span>
             ))}
