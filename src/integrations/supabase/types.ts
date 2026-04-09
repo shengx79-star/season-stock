@@ -14,6 +14,75 @@ export type Database = {
   }
   public: {
     Tables: {
+      portfolio_config: {
+        Row: {
+          created_at: string
+          default_quota_pct: number
+          id: string
+          total_assets: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          default_quota_pct?: number
+          id?: string
+          total_assets?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          default_quota_pct?: number
+          id?: string
+          total_assets?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      positions: {
+        Row: {
+          cost_basis: number
+          created_at: string
+          highest_close_since_entry: number
+          id: string
+          industry: string
+          liquidity_level: string
+          position_value: number
+          quota_value: number | null
+          shares: number
+          symbol: string
+          theme_cluster: string
+          updated_at: string
+        }
+        Insert: {
+          cost_basis?: number
+          created_at?: string
+          highest_close_since_entry?: number
+          id?: string
+          industry?: string
+          liquidity_level?: string
+          position_value?: number
+          quota_value?: number | null
+          shares?: number
+          symbol: string
+          theme_cluster?: string
+          updated_at?: string
+        }
+        Update: {
+          cost_basis?: number
+          created_at?: string
+          highest_close_since_entry?: number
+          id?: string
+          industry?: string
+          liquidity_level?: string
+          position_value?: number
+          quota_value?: number | null
+          shares?: number
+          symbol?: string
+          theme_cluster?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       stock_pool: {
         Row: {
           change: number

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { matchesPinyin } from "@/lib/pinyinMatch";
 import { Search, X, Plus, Loader2 } from "lucide-react";
 import { GoogleLogo } from "@/components/GoogleLogo";
+import { AppNav } from "@/components/AppNav";
 import { SeasonOverview } from "@/components/SeasonOverview";
 import { StockCard } from "@/components/StockCard";
 import { StockAnalysis } from "@/components/StockAnalysis";
@@ -147,6 +148,7 @@ const Index = () => {
           <span className="text-[hsl(var(--autumn))]">四</span>
           <span className="text-primary">季</span>
         </button>
+        <AppNav />
         <form onSubmit={handleSearch} className="flex-1 max-w-xl">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
