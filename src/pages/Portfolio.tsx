@@ -60,9 +60,11 @@ const Portfolio = () => {
       const pos = positions.find((p) => p.symbol === stock.symbol);
       const dailyBars = dailyBarsMap.get(stock.symbol) || [];
       const atr20 = computeATR20(dailyBars);
+      const shares = pos?.shares ?? 0;
+      const positionValue = shares * stock.price;
       return {
         symbol: stock.symbol, name: stock.name, currentPrice: stock.price,
-        positionValue: pos?.positionValue ?? 0, costBasis: pos?.costBasis ?? 0,
+        positionValue, costBasis: pos?.costBasis ?? 0,
         highestCloseSinceEntry: pos?.highestCloseSinceEntry ?? 0, atr20,
         quotaValue: pos?.quotaValue ?? null, industry: pos?.industry ?? stock.sector,
         themeCluster: pos?.themeCluster ?? "", liquidityLevel: pos?.liquidityLevel ?? "good",
