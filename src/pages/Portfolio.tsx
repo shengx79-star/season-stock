@@ -341,7 +341,7 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
   const targetPct = totalAssets > 0 ? (pos.finalTargetValue / totalAssets * 100) : 0;
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl">
+    <div className="p-4 md:p-6 space-y-5 md:space-y-6 max-w-2xl">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
