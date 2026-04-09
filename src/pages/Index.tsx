@@ -33,10 +33,10 @@ const Index = () => {
     else toast.error("删除失败");
   };
 
-  // Search within the pool
+  // Search within the pool using committed query (only updates on Enter)
   const searchResults = (() => {
-    if (!query.trim()) return stockPool;
-    const q = query.toLowerCase();
+    if (!committedQuery.trim()) return stockPool;
+    const q = committedQuery.toLowerCase();
     return stockPool.filter(
       (s) =>
         s.symbol.toLowerCase().includes(q) ||
