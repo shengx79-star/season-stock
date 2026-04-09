@@ -182,7 +182,7 @@ export const KlineChart = ({
   height = 280,
   className = "",
 }: MiniKlineChartProps) => {
-  const { data, domain, maxVol } = useMemo(() => prepareData(dailyBars, bars, 0.005), [dailyBars, bars]);
+  const { data, domain, maxVol } = useMemo(() => prepareData(dailyBars, bars, 0.005, true), [dailyBars, bars]);
 
   if (data.length < 2) return null;
 
