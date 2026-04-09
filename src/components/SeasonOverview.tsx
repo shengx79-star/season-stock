@@ -1,12 +1,25 @@
-import { Season, seasonLabels, seasonDescriptions, seasonEmojis, getStocksBySeason } from "@/lib/stockData";
+import { Season, seasonLabels, seasonDescriptions, seasonEmojis, stockPool } from "@/lib/stockData";
+import { useStockClassifications } from "@/hooks/useStockClassification";
 
 const seasons: Season[] = ["spring", "summer", "autumn", "winter"];
 
 export const SeasonOverview = () => {
+  const { results: classifications, loading } = useStockClassifications(stockPool);
+
+  const countBySeason = (season: Season) => {
+    let count = 0;
+    for (const stock of stockPool) {
+      const cls = classifications.get(stock.symbol);
+      const stage = cls && cls.stage !== "unknown" ? cls.stage : stock.season;
+      if (stage === season) count++;
+    }
+    return count;
+  };
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto mt-10 animate-fade-in">
       {seasons.map((season) => {
-        const stocks = getStocksBySeason(season);
+        const count = countBySeason(season);
         return (
           <div key={season} className={`rounded-2xl p-4 bg-${season}-light border border-border`}>
             <div className="text-3xl mb-2">{seasonEmojis[season]}</div>
@@ -14,7 +27,9 @@ export const SeasonOverview = () => {
               {seasonLabels[season]}
             </h3>
             <p className="text-xs text-muted-foreground mt-1">{seasonDescriptions[season]}</p>
-            <p className={`text-2xl font-bold mt-3 text-${season}-foreground`}>{stocks.length}</p>
+            <p className={`text-2xl font-bold mt-3 text-${season}-foreground`}>
+              {loading ? "…" : count}
+            </p>
             <p className="text-xs text-muted-foreground">只股票</p>
           </div>
         );
