@@ -111,22 +111,28 @@ Deno.serve(async (req) => {
       const code = toTencentCode(symbol);
       
       try {
-        const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${code},${period},,,,${num},qfq`;
+        const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${code},${period},,,${num},qfq`;
         const resp = await fetchWithRetry(url);
         const text = await resp.text();
         
-        // Tencent returns JSONP-like or plain JSON
         let data;
         try {
           data = JSON.parse(text);
         } catch {
-          // Try stripping JSONP wrapper
           const match = text.match(/^[^(]*\((.*)\)[^)]*$/s);
           if (match) {
             data = JSON.parse(match[1]);
           } else {
             throw new Error('Failed to parse response');
           }
+        }
+
+        // Log keys for debugging
+        const stockData = data?.data?.[code];
+        if (stockData) {
+          console.log(`${symbol} keys: ${Object.keys(stockData).join(',')}`);
+        } else {
+          console.log(`${symbol} no data at data.data.${code}, top keys: ${JSON.stringify(Object.keys(data?.data || {}))}`);
         }
 
         const klines = period === 'week' 
