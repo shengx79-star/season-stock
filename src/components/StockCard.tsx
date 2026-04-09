@@ -3,7 +3,7 @@ import { ClassificationResult, Candle } from "@/lib/stockClassifier";
 import { SeasonBadge } from "./SeasonBadge";
 import { SeasonScoreBar } from "./SeasonScoreBar";
 import { MiniKlineChart } from "./MiniKlineChart";
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, X } from "lucide-react";
 import { Season } from "@/lib/stockData";
 
 interface StockCardProps {
@@ -11,9 +11,10 @@ interface StockCardProps {
   classification?: ClassificationResult;
   dailyBars?: Candle[];
   onClick: (stock: Stock) => void;
+  onDelete?: (symbol: string) => void;
 }
 
-export const StockCard = ({ stock, classification, dailyBars, onClick }: StockCardProps) => {
+export const StockCard = ({ stock, classification, dailyBars, onClick, onDelete }: StockCardProps) => {
   const isUp = stock.change >= 0;
   const season = (classification?.stage !== "unknown" ? classification?.stage : stock.season) as Season;
   const confidence = classification?.confidence;
@@ -21,7 +22,16 @@ export const StockCard = ({ stock, classification, dailyBars, onClick }: StockCa
   const seasonScore = classification?.seasonScore ?? 50;
 
   return (
-    <div className="stock-card" onClick={() => onClick(stock)}>
+    <div className="stock-card relative group" onClick={() => onClick(stock)}>
+      {onDelete && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(stock.symbol); }}
+          className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full bg-destructive/10 hover:bg-destructive/20 text-destructive"
+          title="删除"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
       <div className="flex items-start justify-between mb-3">
         <div>
           <h3 className="text-lg font-medium text-foreground">{stock.symbol}</h3>
@@ -35,12 +45,10 @@ export const StockCard = ({ stock, classification, dailyBars, onClick }: StockCa
         />
       </div>
 
-      {/* Mini K-line Chart */}
       {dailyBars && dailyBars.length > 2 && (
         <MiniKlineChart dailyBars={dailyBars} season={season} bars={30} height={48} className="mb-2 -mx-1" />
       )}
 
-      {/* Season Score Bar */}
       {classification && (
         <div className="mb-3">
           <SeasonScoreBar score={seasonScore} />
@@ -61,7 +69,6 @@ export const StockCard = ({ stock, classification, dailyBars, onClick }: StockCa
         </div>
       </div>
 
-      {/* Quick scores */}
       {classification && classification.stage !== "unknown" && (
         <div className="mt-3 pt-3 border-t border-border flex justify-between text-xs text-muted-foreground">
           <span>置信度 <span className={`font-medium ${

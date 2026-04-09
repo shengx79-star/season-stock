@@ -8,6 +8,7 @@ import { Stock, Season, seasonLabels, seasonEmojis } from "@/lib/stockData";
 import { useStockClassifications, useStockClassification } from "@/hooks/useStockClassification";
 import { useStockPool } from "@/hooks/useStockPool";
 import { lookupStock } from "@/lib/stockLookup";
+import { toast as sonnerToast } from "sonner";
 import { toast } from "sonner";
 
 const seasonFilters: (Season | "all")[] = ["all", "spring", "summer", "autumn", "winter"];
@@ -20,7 +21,13 @@ const Index = () => {
   const [lookingUp, setLookingUp] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { stocks: stockPool, addStock } = useStockPool();
+  const { stocks: stockPool, addStock, removeStock } = useStockPool();
+
+  const handleDeleteStock = async (symbol: string) => {
+    const ok = await removeStock(symbol);
+    if (ok) sonnerToast.success(`已从股票池移除 ${symbol}`);
+    else sonnerToast.error("删除失败");
+  };
 
   // Search within the pool
   const searchResults = (() => {
@@ -168,6 +175,7 @@ const Index = () => {
                   classification={classifications.get(stock.symbol)}
                   dailyBars={dailyBarsMap.get(stock.symbol)}
                   onClick={handleStockClick}
+                  onDelete={handleDeleteStock}
                 />
               ))}
             </div>
