@@ -18,6 +18,9 @@ const Index = () => {
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [activeFilter, setActiveFilter] = useState<Season | "all">("all");
   const [lookingUp, setLookingUp] = useState(false);
+  const [suggestions, setSuggestions] = useState<StockSuggestion[]>([]);
+  const [searchingRemote, setSearchingRemote] = useState(false);
+  const [addingSymbol, setAddingSymbol] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { stocks: stockPool, addStock, removeStock } = useStockPool();
