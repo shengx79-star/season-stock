@@ -44,17 +44,9 @@ const actionBorderColors: Record<ActionType, string> = {
 const Portfolio = () => {
   const { stocks: stockPool, togglePortfolio } = useStockPool();
   const { config, positions, loading: portfolioLoading, updateConfig, upsertPosition, removePosition } = usePortfolio();
+  const portfolioStocks = useMemo(() => stockPool.filter(s => s.inPortfolio), [stockPool]);
   const { results: allClassifications } = useStockClassifications(stockPool);
   const { results: classifications, dailyBarsMap } = useStockClassifications(portfolioStocks);
-
-  const [showConfig, setShowConfig] = useState(false);
-  const [editTotalAssets, setEditTotalAssets] = useState("");
-  const [editQuotaPct, setEditQuotaPct] = useState("");
-  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
-  const [editingPosition, setEditingPosition] = useState(false);
-  const [posForm, setPosForm] = useState({ positionValue: "", costBasis: "", shares: "", quotaValue: "" });
-
-  const portfolioStocks = useMemo(() => stockPool.filter(s => s.inPortfolio), [stockPool]);
 
   const positionInputs: PositionInput[] = useMemo(() => {
     return portfolioStocks.map((stock) => {
