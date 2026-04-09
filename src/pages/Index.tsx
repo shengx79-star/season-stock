@@ -24,8 +24,8 @@ const Index = () => {
 
   const handleDeleteStock = async (symbol: string) => {
     const ok = await removeStock(symbol);
-    if (ok) sonnerToast.success(`已从股票池移除 ${symbol}`);
-    else sonnerToast.error("删除失败");
+    if (ok) toast.success(`已从股票池移除 ${symbol}`);
+    else toast.error("删除失败");
   };
 
   // Search within the pool
