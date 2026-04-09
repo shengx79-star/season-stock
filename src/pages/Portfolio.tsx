@@ -235,6 +235,12 @@ const Portfolio = () => {
                         </span>
                       )}
                     </div>
+                    <div className="flex items-center gap-2 mt-0.5 text-[11px]">
+                      <span className="text-muted-foreground">现价 ¥{pos.currentPrice.toFixed(2)}</span>
+                      {pos.currentPositionValue > 0 && (
+                        <span className="text-muted-foreground">持仓 {formatMoney(pos.currentPositionValue)}</span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right shrink-0 ml-2">
                     <div className={`text-xs font-medium ${
