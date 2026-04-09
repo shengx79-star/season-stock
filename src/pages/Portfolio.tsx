@@ -48,6 +48,13 @@ const Portfolio = () => {
   const { results: allClassifications } = useStockClassifications(stockPool);
   const { results: classifications, dailyBarsMap } = useStockClassifications(portfolioStocks);
 
+  const [showConfig, setShowConfig] = useState(false);
+  const [editTotalAssets, setEditTotalAssets] = useState("");
+  const [editQuotaPct, setEditQuotaPct] = useState("");
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [editingPosition, setEditingPosition] = useState(false);
+  const [posForm, setPosForm] = useState({ positionValue: "", costBasis: "", shares: "", quotaValue: "" });
+
   const positionInputs: PositionInput[] = useMemo(() => {
     return portfolioStocks.map((stock) => {
       const pos = positions.find((p) => p.symbol === stock.symbol);
