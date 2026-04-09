@@ -1,14 +1,18 @@
-import { Season, seasonLabels, seasonDescriptions, seasonEmojis, stockPool } from "@/lib/stockData";
+import { Stock, Season, seasonLabels, seasonDescriptions, seasonEmojis } from "@/lib/stockData";
 import { useStockClassifications } from "@/hooks/useStockClassification";
 
 const seasons: Season[] = ["spring", "summer", "autumn", "winter"];
 
-export const SeasonOverview = () => {
-  const { results: classifications, loading } = useStockClassifications(stockPool);
+interface SeasonOverviewProps {
+  stocks: Stock[];
+}
+
+export const SeasonOverview = ({ stocks }: SeasonOverviewProps) => {
+  const { results: classifications, loading } = useStockClassifications(stocks);
 
   const countBySeason = (season: Season) => {
     let count = 0;
-    for (const stock of stockPool) {
+    for (const stock of stocks) {
       const cls = classifications.get(stock.symbol);
       const stage = cls && cls.stage !== "unknown" ? cls.stage : stock.season;
       if (stage === season) count++;
