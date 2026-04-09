@@ -1,32 +1,101 @@
-import { useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Stock } from "@/lib/stockData";
-import { classifyStock, ClassificationResult } from "@/lib/stockClassifier";
+import { classifyStock, ClassificationResult, Candle } from "@/lib/stockClassifier";
 import { generateMockCandles } from "@/lib/mockKlineGenerator";
+import { fetchKlineData, fetchSingleKline } from "@/lib/alltickService";
 
-// Cache generated candles per symbol to keep results stable during session
-const candleCache = new Map<string, ReturnType<typeof generateMockCandles>>();
+// Mock data fallback cache
+const mockCache = new Map<string, { dailyBars: Candle[]; weeklyBars: Candle[] }>();
 
-function getCachedCandles(stock: Stock) {
-  if (!candleCache.has(stock.symbol)) {
-    candleCache.set(stock.symbol, generateMockCandles(stock.price, stock.season));
+function getMockCandles(stock: Stock) {
+  if (!mockCache.has(stock.symbol)) {
+    mockCache.set(stock.symbol, generateMockCandles(stock.price, stock.season));
   }
-  return candleCache.get(stock.symbol)!;
+  return mockCache.get(stock.symbol)!;
 }
 
-export function useStockClassification(stock: Stock): ClassificationResult {
-  return useMemo(() => {
-    const { dailyBars, weeklyBars } = getCachedCandles(stock);
-    return classifyStock({ dailyBars, weeklyBars, currentStage: stock.season });
-  }, [stock.symbol, stock.season, stock.price]);
+export function useStockClassification(stock: Stock): ClassificationResult & { loading: boolean } {
+  const [realData, setRealData] = useState<{ dailyBars: Candle[]; weeklyBars: Candle[] } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+
+    fetchSingleKline(stock.symbol)
+      .then((data) => {
+        if (!cancelled) {
+          // Only use real data if we got meaningful results
+          if (data.dailyBars.length >= 20) {
+            setRealData(data);
+          }
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [stock.symbol]);
+
+  const result = useMemo(() => {
+    const bars = realData || getMockCandles(stock);
+    return classifyStock({
+      dailyBars: bars.dailyBars,
+      weeklyBars: bars.weeklyBars,
+      currentStage: stock.season,
+    });
+  }, [stock.symbol, stock.season, stock.price, realData]);
+
+  return { ...result, loading };
 }
 
-export function useStockClassifications(stocks: Stock[]): Map<string, ClassificationResult> {
-  return useMemo(() => {
+export function useStockClassifications(stocks: Stock[]): {
+  results: Map<string, ClassificationResult>;
+  loading: boolean;
+} {
+  const [realDataMap, setRealDataMap] = useState<Map<string, { dailyBars: Candle[]; weeklyBars: Candle[] }>>(new Map());
+  const [loading, setLoading] = useState(true);
+
+  const symbols = useMemo(() => stocks.map(s => s.symbol), [stocks]);
+
+  useEffect(() => {
+    if (stocks.length === 0) {
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+
+    fetchKlineData(symbols)
+      .then((dataMap) => {
+        if (!cancelled) {
+          setRealDataMap(dataMap);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [symbols.join(',')]);
+
+  const results = useMemo(() => {
     const map = new Map<string, ClassificationResult>();
     for (const stock of stocks) {
-      const { dailyBars, weeklyBars } = getCachedCandles(stock);
-      map.set(stock.symbol, classifyStock({ dailyBars, weeklyBars, currentStage: stock.season }));
+      const real = realDataMap.get(stock.symbol);
+      const bars = (real && real.dailyBars.length >= 20) ? real : getMockCandles(stock);
+      map.set(stock.symbol, classifyStock({
+        dailyBars: bars.dailyBars,
+        weeklyBars: bars.weeklyBars,
+        currentStage: stock.season,
+      }));
     }
     return map;
-  }, [stocks]);
+  }, [stocks, realDataMap]);
+
+  return { results, loading };
 }
