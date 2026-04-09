@@ -21,7 +21,13 @@ const Index = () => {
   const [lookingUp, setLookingUp] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { stocks: stockPool, addStock } = useStockPool();
+  const { stocks: stockPool, addStock, removeStock } = useStockPool();
+
+  const handleDeleteStock = async (symbol: string) => {
+    const ok = await removeStock(symbol);
+    if (ok) sonnerToast.success(`已从股票池移除 ${symbol}`);
+    else sonnerToast.error("删除失败");
+  };
 
   // Search within the pool
   const searchResults = (() => {
