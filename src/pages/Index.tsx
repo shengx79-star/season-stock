@@ -174,7 +174,16 @@ const Index = () => {
 /** Wrapper that runs classification for the selected stock */
 function SelectedStockAnalysis({ stock, onBack }: { stock: Stock; onBack: () => void }) {
   const classification = useStockClassification(stock);
-  return <StockAnalysis stock={stock} classification={classification} dailyBars={classification.dailyBars} onBack={onBack} />;
+  return (
+    <>
+      {classification.loading && (
+        <div className="max-w-2xl mx-auto mb-4 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm text-center animate-pulse">
+          正在从 AllTick 获取真实行情数据...
+        </div>
+      )}
+      <StockAnalysis stock={stock} classification={classification} dailyBars={classification.dailyBars} onBack={onBack} />
+    </>
+  );
 }
 
 export default Index;
