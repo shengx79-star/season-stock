@@ -15,6 +15,7 @@ const seasonFilters: (Season | "all")[] = ["all", "spring", "summer", "autumn", 
 
 const Index = () => {
   const [query, setQuery] = useState("");
+  const [committedQuery, setCommittedQuery] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [activeFilter, setActiveFilter] = useState<Season | "all">("all");
@@ -32,10 +33,10 @@ const Index = () => {
     else toast.error("删除失败");
   };
 
-  // Search within the pool
+  // Search within the pool using committed query (only updates on Enter)
   const searchResults = (() => {
-    if (!query.trim()) return stockPool;
-    const q = query.toLowerCase();
+    if (!committedQuery.trim()) return stockPool;
+    const q = committedQuery.toLowerCase();
     return stockPool.filter(
       (s) =>
         s.symbol.toLowerCase().includes(q) ||
@@ -58,24 +59,24 @@ const Index = () => {
   // Check if query looks like a stock code (digits only)
   const isStockCode = /^\d{5,6}$/.test(query.trim());
   const codeNotInPool = isStockCode && !stockPool.some((s) => s.symbol === query.trim());
-  const isTextQuery = query.trim().length >= 2 && !isStockCode;
+  const isCommittedTextQuery = committedQuery.trim().length >= 2 && !/^\d{5,6}$/.test(committedQuery.trim());
 
-  // Auto-search remote when local results empty and query is text
+  // Auto-search remote when local results empty and committed query is text
   useEffect(() => {
-    if (!isTextQuery || filteredResults.length > 0) {
+    if (!isCommittedTextQuery || filteredResults.length > 0) {
       setSuggestions([]);
       return;
     }
     const timer = setTimeout(async () => {
       setSearchingRemote(true);
       try {
-        const results = await searchStockByName(query.trim());
+        const results = await searchStockByName(committedQuery.trim());
         setSuggestions(results);
       } catch { setSuggestions([]); }
       finally { setSearchingRemote(false); }
     }, 400);
     return () => clearTimeout(timer);
-  }, [query, isTextQuery, filteredResults.length]);
+  }, [committedQuery, isCommittedTextQuery, filteredResults.length]);
 
   const handleAddSuggestion = async (s: StockSuggestion) => {
     setAddingSymbol(s.symbol);
@@ -119,6 +120,7 @@ const Index = () => {
     if (codeNotInPool) {
       handleLookupAndAdd();
     } else {
+      setCommittedQuery(query);
       setHasSearched(true);
       setSelectedStock(null);
     }
@@ -129,6 +131,7 @@ const Index = () => {
 
   const handleClear = () => {
     setQuery("");
+    setCommittedQuery("");
     setHasSearched(false);
     setSelectedStock(null);
     setActiveFilter("all");
@@ -150,7 +153,7 @@ const Index = () => {
             <input
               ref={inputRef}
               value={query}
-              onChange={(e) => { setQuery(e.target.value); if (hasSearched) setHasSearched(true); }}
+              onChange={(e) => setQuery(e.target.value)}
               className="search-input pl-11 pr-10 py-2.5 text-sm"
               placeholder="输入股票代码添加，或搜索名称..."
             />
@@ -314,7 +317,7 @@ const Index = () => {
             ) : (
               <button
                 type="button"
-                onClick={() => { setQuery(""); setHasSearched(true); }}
+                onClick={() => { setQuery(""); setCommittedQuery(""); setHasSearched(true); }}
                 className="px-6 py-2.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:shadow-sm hover:border-border border border-transparent transition-all"
               >
                 查看全部
