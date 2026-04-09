@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { matchesPinyin } from "@/lib/pinyinMatch";
 import { Search, X, Plus, Loader2 } from "lucide-react";
 import { GoogleLogo } from "@/components/GoogleLogo";
 import { SeasonOverview } from "@/components/SeasonOverview";
@@ -39,7 +40,8 @@ const Index = () => {
       (s) =>
         s.symbol.toLowerCase().includes(q) ||
         s.name.toLowerCase().includes(q) ||
-        s.sector.toLowerCase().includes(q)
+        s.sector.toLowerCase().includes(q) ||
+        matchesPinyin(s.name, q)
     );
   })();
 
