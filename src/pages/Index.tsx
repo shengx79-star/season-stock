@@ -138,7 +138,7 @@ const Index = () => {
     inputRef.current?.focus();
   };
 
-  const SearchHeader = ({ onLogoClick }: { onLogoClick: () => void }) => (
+  const renderSearchHeader = (onLogoClick: () => void) => (
     <header className="border-b border-border px-6 py-3">
       <div className="flex items-center gap-4 max-w-5xl mx-auto">
         <button onClick={onLogoClick} className="text-2xl font-bold tracking-tight shrink-0">
