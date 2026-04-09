@@ -7,7 +7,7 @@ export function AppNav() {
   return (
     <nav className="flex gap-1 text-sm">
       <Link
-        to="/"
+        to="/?view=list"
         className={`px-3 py-1.5 rounded-md transition-colors ${
           !isPortfolio
             ? "bg-primary/10 text-primary font-medium"
