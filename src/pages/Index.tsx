@@ -1,11 +1,14 @@
 import { useState, useRef } from "react";
-import { Search, X } from "lucide-react";
+import { Search, X, Plus, Loader2 } from "lucide-react";
 import { GoogleLogo } from "@/components/GoogleLogo";
 import { SeasonOverview } from "@/components/SeasonOverview";
 import { StockCard } from "@/components/StockCard";
 import { StockAnalysis } from "@/components/StockAnalysis";
-import { Stock, searchStocks, Season, seasonLabels, seasonEmojis } from "@/lib/stockData";
+import { Stock, Season, seasonLabels, seasonEmojis } from "@/lib/stockData";
 import { useStockClassifications, useStockClassification } from "@/hooks/useStockClassification";
+import { useStockPool } from "@/hooks/useStockPool";
+import { lookupStock } from "@/lib/stockLookup";
+import { toast } from "sonner";
 
 const seasonFilters: (Season | "all")[] = ["all", "spring", "summer", "autumn", "winter"];
 
@@ -14,24 +17,67 @@ const Index = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [activeFilter, setActiveFilter] = useState<Season | "all">("all");
+  const [lookingUp, setLookingUp] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const results = searchStocks(query);
-  const { results: classifications, dailyBarsMap } = useStockClassifications(results);
+  const { stocks: stockPool, addStock } = useStockPool();
 
-  // Filter by classified stage (dynamic), not static stock.season
+  // Search within the pool
+  const searchResults = (() => {
+    if (!query.trim()) return stockPool;
+    const q = query.toLowerCase();
+    return stockPool.filter(
+      (s) =>
+        s.symbol.toLowerCase().includes(q) ||
+        s.name.toLowerCase().includes(q) ||
+        s.sector.toLowerCase().includes(q)
+    );
+  })();
+
+  const { results: classifications, dailyBarsMap } = useStockClassifications(searchResults);
+
   const filteredResults = activeFilter === "all"
-    ? results
-    : results.filter((s) => {
+    ? searchResults
+    : searchResults.filter((s) => {
         const cls = classifications.get(s.symbol);
         const stage = cls && cls.stage !== "unknown" ? cls.stage : s.season;
         return stage === activeFilter;
       });
 
+  // Check if query looks like a stock code (digits only)
+  const isStockCode = /^\d{5,6}$/.test(query.trim());
+  const codeNotInPool = isStockCode && !stockPool.some((s) => s.symbol === query.trim());
+
+  const handleLookupAndAdd = async () => {
+    const symbol = query.trim();
+    setLookingUp(true);
+    try {
+      const stock = await lookupStock(symbol);
+      if (!stock) {
+        toast.error(`未找到股票 ${symbol}`);
+        return;
+      }
+      const ok = await addStock(stock);
+      if (ok) {
+        toast.success(`已添加 ${stock.name}(${stock.symbol}) 到股票池`);
+        setSelectedStock(stock);
+        setHasSearched(false);
+      }
+    } catch {
+      toast.error("查找股票失败，请重试");
+    } finally {
+      setLookingUp(false);
+    }
+  };
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    setHasSearched(true);
-    setSelectedStock(null);
+    if (codeNotInPool) {
+      handleLookupAndAdd();
+    } else {
+      setHasSearched(true);
+      setSelectedStock(null);
+    }
   };
 
   const handleStockClick = (stock: Stock) => setSelectedStock(stock);
@@ -62,7 +108,7 @@ const Index = () => {
               value={query}
               onChange={(e) => { setQuery(e.target.value); if (hasSearched) setHasSearched(true); }}
               className="search-input pl-11 pr-10 py-2.5 text-sm"
-              placeholder="搜索股票代码、名称或行业..."
+              placeholder="输入股票代码添加，或搜索名称..."
             />
             {query && (
               <button type="button" onClick={handleClear} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
@@ -125,7 +171,20 @@ const Index = () => {
                 />
               ))}
             </div>
-            {filteredResults.length === 0 && (
+            {filteredResults.length === 0 && codeNotInPool && (
+              <div className="text-center py-16">
+                <p className="text-muted-foreground mb-4">股票池中没有 {query}</p>
+                <button
+                  onClick={handleLookupAndAdd}
+                  disabled={lookingUp}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >
+                  {lookingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                  搜索并添加 {query}
+                </button>
+              </div>
+            )}
+            {filteredResults.length === 0 && !codeNotInPool && (
               <div className="text-center py-16">
                 <p className="text-muted-foreground">没有找到匹配的股票</p>
               </div>
@@ -147,9 +206,9 @@ const Index = () => {
             <input
               ref={inputRef}
               value={query}
-              onChange={(e) => { setQuery(e.target.value); setHasSearched(true); }}
+              onChange={(e) => setQuery(e.target.value)}
               className="search-input pl-14 pr-12"
-              placeholder="搜索股票代码、名称或行业..."
+              placeholder="输入股票代码添加，或搜索名称..."
               autoFocus
             />
             {query && (
@@ -159,12 +218,27 @@ const Index = () => {
             )}
           </div>
           <div className="flex justify-center gap-3 mt-6">
-            <button type="button" onClick={() => { setQuery(""); setHasSearched(true); }} className="px-6 py-2.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:shadow-sm hover:border-border border border-transparent transition-all">
-              查看全部
-            </button>
+            {codeNotInPool ? (
+              <button
+                type="submit"
+                disabled={lookingUp}
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-all disabled:opacity-50"
+              >
+                {lookingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                搜索并添加 {query}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setQuery(""); setHasSearched(true); }}
+                className="px-6 py-2.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:shadow-sm hover:border-border border border-transparent transition-all"
+              >
+                查看全部
+              </button>
+            )}
           </div>
         </form>
-        <SeasonOverview />
+        <SeasonOverview stocks={stockPool} />
       </div>
       <footer className="border-t border-border py-4 px-6">
         <div className="max-w-5xl mx-auto flex justify-between items-center text-xs text-muted-foreground">
@@ -183,7 +257,7 @@ function SelectedStockAnalysis({ stock, onBack }: { stock: Stock; onBack: () => 
     <>
       {classification.loading && (
         <div className="max-w-2xl mx-auto mb-4 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm text-center animate-pulse">
-          正在从 AllTick 获取真实行情数据...
+          正在获取真实行情数据...
         </div>
       )}
       <StockAnalysis stock={stock} classification={classification} dailyBars={classification.dailyBars} onBack={onBack} />
