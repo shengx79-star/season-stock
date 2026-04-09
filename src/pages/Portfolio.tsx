@@ -407,10 +407,10 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
         <h3 className="text-sm font-semibold">持仓数据</h3>
         {editing ? (
           <div className="rounded-lg border border-border p-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-muted-foreground">持仓市值</label>
-                <input type="number" value={posForm.positionValue} onChange={(e) => onFormChange({ ...posForm, positionValue: e.target.value })}
+                <label className="text-xs text-muted-foreground">持仓数量</label>
+                <input type="number" value={posForm.shares} onChange={(e) => onFormChange({ ...posForm, shares: e.target.value })}
                   className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm" />
               </div>
               <div>
@@ -419,9 +419,10 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
                   className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm" />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">持仓数量</label>
-                <input type="number" value={posForm.shares} onChange={(e) => onFormChange({ ...posForm, shares: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm" />
+                <label className="text-xs text-muted-foreground">持仓市值 (自动计算)</label>
+                <div className="w-full mt-1 px-3 py-2 rounded-md bg-secondary text-sm text-muted-foreground">
+                  ¥{((parseFloat(posForm.shares) || 0) * pos.currentPrice).toFixed(2)}
+                </div>
               </div>
               <div>
                 <label className="text-xs text-muted-foreground">配额 (可选)</label>
