@@ -53,6 +53,7 @@ const Portfolio = () => {
   const [editTotalAssets, setEditTotalAssets] = useState("");
   const [editQuotaPct, setEditQuotaPct] = useState("");
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const [editingPosition, setEditingPosition] = useState(false);
   const [posForm, setPosForm] = useState({ positionValue: "", costBasis: "", shares: "", quotaValue: "" });
 
