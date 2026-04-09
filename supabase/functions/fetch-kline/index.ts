@@ -5,6 +5,10 @@ const corsHeaders = {
 
 const ALLTICK_BASE = 'https://quote.alltick.co/quote-stock-b-api'
 
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -28,39 +32,45 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Fetch kline data for each symbol sequentially (AllTick free tier: 1 req/10s)
-    // For paid tiers we could parallelize
-    const results: Record<string, unknown> = {}
+    const results: Record<string, { klines: unknown[]; error?: string }> = {}
 
-    // Use batch endpoint if available, otherwise sequential
-    // For efficiency, fetch all in parallel and let rate limiting handle itself
-    const fetchPromises = symbols.map(async (code: string) => {
-      const query = JSON.stringify({
-        trace: `${code}-${Date.now()}`,
-        data: {
-          code,
-          kline_type,
-          kline_timestamp_end: 0,
-          query_kline_num: Math.min(kline_num, 500),
-          adjust_type: 0,
-        },
-      })
+    // Free tier: 1 request per 10 seconds, max 10 per minute
+    // Fetch sequentially with delay to avoid rate limiting
+    for (let i = 0; i < symbols.length; i++) {
+      const code = symbols[i]
 
-      const url = `${ALLTICK_BASE}/kline?token=${token}&query=${encodeURIComponent(query)}`
-      const resp = await fetch(url)
-      const data = await resp.json()
-
-      if (data.ret === 200 && data.data?.kline_list) {
-        return { code, klines: data.data.kline_list }
-      } else {
-        console.error(`AllTick error for ${code}:`, data)
-        return { code, klines: [], error: data.msg || 'Unknown error' }
+      // Wait 10s between requests for free tier
+      if (i > 0) {
+        await sleep(10500)
       }
-    })
 
-    const allResults = await Promise.all(fetchPromises)
-    for (const r of allResults) {
-      results[r.code] = { klines: r.klines, error: (r as { error?: string }).error }
+      try {
+        const query = JSON.stringify({
+          trace: `${code}-${Date.now()}`,
+          data: {
+            code,
+            kline_type,
+            kline_timestamp_end: 0,
+            query_kline_num: Math.min(kline_num, 500),
+            adjust_type: 0,
+          },
+        })
+
+        const url = `${ALLTICK_BASE}/kline?token=${token}&query=${encodeURIComponent(query)}`
+        const resp = await fetch(url)
+        const data = await resp.json()
+
+        if (data.ret === 200 && data.data?.kline_list) {
+          results[code] = { klines: data.data.kline_list }
+          console.log(`✓ ${code}: ${data.data.kline_list.length} bars`)
+        } else {
+          console.error(`AllTick error for ${code}:`, data)
+          results[code] = { klines: [], error: data.msg || data.error_msg || 'Unknown error' }
+        }
+      } catch (err) {
+        console.error(`Fetch error for ${code}:`, err)
+        results[code] = { klines: [], error: 'fetch failed' }
+      }
     }
 
     return new Response(JSON.stringify({ data: results }), {
