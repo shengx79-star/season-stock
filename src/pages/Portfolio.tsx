@@ -396,7 +396,7 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
       {/* Details grid */}
       <div className="space-y-2">
         <h3 className="text-sm font-semibold">详细参数</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
           <DetailItem label="当前价" value={`¥${pos.currentPrice.toFixed(2)}`} />
           <DetailItem label="成本价" value={pos.costBasis > 0 ? `¥${pos.costBasis.toFixed(2)}` : "—"} />
           <DetailItem label="盈亏" value={pos.costBasis > 0 ? `${pos.pnlPct.toFixed(1)}%` : "—"}
