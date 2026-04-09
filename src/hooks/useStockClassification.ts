@@ -14,7 +14,12 @@ function getMockCandles(stock: Stock) {
   return mockCache.get(stock.symbol)!;
 }
 
-export function useStockClassification(stock: Stock): ClassificationResult & { loading: boolean } {
+export interface ClassificationWithData extends ClassificationResult {
+  loading: boolean;
+  dailyBars: Candle[];
+}
+
+export function useStockClassification(stock: Stock): ClassificationWithData {
   const [realData, setRealData] = useState<{ dailyBars: Candle[]; weeklyBars: Candle[] } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -25,7 +30,6 @@ export function useStockClassification(stock: Stock): ClassificationResult & { l
     fetchSingleKline(stock.symbol)
       .then((data) => {
         if (!cancelled) {
-          // Only use real data if we got meaningful results
           if (data.dailyBars.length >= 20) {
             setRealData(data);
           }
@@ -39,22 +43,24 @@ export function useStockClassification(stock: Stock): ClassificationResult & { l
     return () => { cancelled = true; };
   }, [stock.symbol]);
 
-  const result = useMemo(() => {
+  return useMemo(() => {
     const bars = realData || getMockCandles(stock);
-    return classifyStock({
+    const result = classifyStock({
       dailyBars: bars.dailyBars,
       weeklyBars: bars.weeklyBars,
       currentStage: stock.season,
     });
-  }, [stock.symbol, stock.season, stock.price, realData]);
-
-  return { ...result, loading };
+    return { ...result, loading, dailyBars: bars.dailyBars };
+  }, [stock.symbol, stock.season, stock.price, realData, loading]);
 }
 
-export function useStockClassifications(stocks: Stock[]): {
+export interface ClassificationsWithData {
   results: Map<string, ClassificationResult>;
+  dailyBarsMap: Map<string, Candle[]>;
   loading: boolean;
-} {
+}
+
+export function useStockClassifications(stocks: Stock[]): ClassificationsWithData {
   const [realDataMap, setRealDataMap] = useState<Map<string, { dailyBars: Candle[]; weeklyBars: Candle[] }>>(new Map());
   const [loading, setLoading] = useState(true);
 
@@ -83,8 +89,9 @@ export function useStockClassifications(stocks: Stock[]): {
     return () => { cancelled = true; };
   }, [symbols.join(',')]);
 
-  const results = useMemo(() => {
+  const { results, dailyBarsMap } = useMemo(() => {
     const map = new Map<string, ClassificationResult>();
+    const barsMap = new Map<string, Candle[]>();
     for (const stock of stocks) {
       const real = realDataMap.get(stock.symbol);
       const bars = (real && real.dailyBars.length >= 20) ? real : getMockCandles(stock);
@@ -93,9 +100,10 @@ export function useStockClassifications(stocks: Stock[]): {
         weeklyBars: bars.weeklyBars,
         currentStage: stock.season,
       }));
+      barsMap.set(stock.symbol, bars.dailyBars);
     }
-    return map;
+    return { results: map, dailyBarsMap: barsMap };
   }, [stocks, realDataMap]);
 
-  return { results, loading };
+  return { results, dailyBarsMap, loading };
 }
