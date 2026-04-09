@@ -127,7 +127,7 @@ function ScoreRow({ label, scores, cap, notes }: { label: string; scores: StageS
 }
 
 export const ScoreBreakdownPanel = ({ result }: ScoreBreakdownPanelProps) => {
-  const { scores, scoreBreakdown, turnSignals, confidence, confidenceLevel, seasonScore } = result;
+  const { scores, scoreBreakdown, turnSignals, confidence, confidenceLevel, seasonScore, notes } = result;
 
   return (
     <div className="space-y-4">
