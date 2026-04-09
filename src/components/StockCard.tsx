@@ -1,17 +1,19 @@
 import { Stock } from "@/lib/stockData";
-import { ClassificationResult } from "@/lib/stockClassifier";
+import { ClassificationResult, Candle } from "@/lib/stockClassifier";
 import { SeasonBadge } from "./SeasonBadge";
 import { SeasonScoreBar } from "./SeasonScoreBar";
+import { MiniKlineChart } from "./MiniKlineChart";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { Season } from "@/lib/stockData";
 
 interface StockCardProps {
   stock: Stock;
   classification?: ClassificationResult;
+  dailyBars?: Candle[];
   onClick: (stock: Stock) => void;
 }
 
-export const StockCard = ({ stock, classification, onClick }: StockCardProps) => {
+export const StockCard = ({ stock, classification, dailyBars, onClick }: StockCardProps) => {
   const isUp = stock.change >= 0;
   const season = (classification?.stage !== "unknown" ? classification?.stage : stock.season) as Season;
   const confidence = classification?.confidence;
@@ -32,6 +34,11 @@ export const StockCard = ({ stock, classification, onClick }: StockCardProps) =>
           confidenceLevel={confidenceLevel}
         />
       </div>
+
+      {/* Mini K-line Chart */}
+      {dailyBars && dailyBars.length > 2 && (
+        <MiniKlineChart dailyBars={dailyBars} season={season} bars={30} height={48} className="mb-2 -mx-1" />
+      )}
 
       {/* Season Score Bar */}
       {classification && (

@@ -18,7 +18,7 @@ const Index = () => {
 
   const results = searchStocks(query);
   const filteredResults = activeFilter === "all" ? results : results.filter((s) => s.season === activeFilter);
-  const { results: classifications } = useStockClassifications(filteredResults);
+  const { results: classifications, dailyBarsMap } = useStockClassifications(filteredResults);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,6 +112,7 @@ const Index = () => {
                   key={stock.symbol}
                   stock={stock}
                   classification={classifications.get(stock.symbol)}
+                  dailyBars={dailyBarsMap.get(stock.symbol)}
                   onClick={handleStockClick}
                 />
               ))}
@@ -173,7 +174,7 @@ const Index = () => {
 /** Wrapper that runs classification for the selected stock */
 function SelectedStockAnalysis({ stock, onBack }: { stock: Stock; onBack: () => void }) {
   const classification = useStockClassification(stock);
-  return <StockAnalysis stock={stock} classification={classification} onBack={onBack} />;
+  return <StockAnalysis stock={stock} classification={classification} dailyBars={classification.dailyBars} onBack={onBack} />;
 }
 
 export default Index;
