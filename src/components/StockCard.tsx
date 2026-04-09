@@ -3,7 +3,7 @@ import { ClassificationResult, Candle } from "@/lib/stockClassifier";
 import { SeasonBadge } from "./SeasonBadge";
 import { SeasonScoreBar } from "./SeasonScoreBar";
 import { MiniKlineChart } from "./MiniKlineChart";
-import { TrendingUp, TrendingDown, X } from "lucide-react";
+import { TrendingUp, TrendingDown, X, Briefcase } from "lucide-react";
 import { Season } from "@/lib/stockData";
 
 interface StockCardProps {
@@ -12,25 +12,43 @@ interface StockCardProps {
   dailyBars?: Candle[];
   onClick: (stock: Stock) => void;
   onDelete?: (symbol: string) => void;
+  onTogglePortfolio?: (symbol: string, value: boolean) => void;
 }
 
-export const StockCard = ({ stock, classification, dailyBars, onClick, onDelete }: StockCardProps) => {
+export const StockCard = ({ stock, classification, dailyBars, onClick, onDelete, onTogglePortfolio }: StockCardProps) => {
   const isUp = stock.change >= 0;
   const season = (classification?.stage !== "unknown" ? classification?.stage : stock.season) as Season;
   const confidence = classification?.confidence;
   const confidenceLevel = classification?.confidenceLevel;
   const seasonScore = classification?.seasonScore ?? 50;
+  const inPortfolio = !!stock.inPortfolio;
 
   return (
     <div className="stock-card relative group" onClick={() => onClick(stock)}>
-      {onDelete && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(stock.symbol); }}
-          className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full bg-destructive/10 hover:bg-destructive/20 text-destructive"
-          title="删除"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        {onTogglePortfolio && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onTogglePortfolio(stock.symbol, !inPortfolio); }}
+            className={`p-1 rounded-full transition-colors ${inPortfolio ? "bg-primary/20 text-primary" : "bg-secondary hover:bg-secondary/80 text-muted-foreground"}`}
+            title={inPortfolio ? "移出仓位管理" : "纳入仓位管理"}
+          >
+            <Briefcase className="w-3.5 h-3.5" />
+          </button>
+        )}
+        {onDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(stock.symbol); }}
+            className="p-1 rounded-full bg-destructive/10 hover:bg-destructive/20 text-destructive"
+            title="删除"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+      {inPortfolio && (
+        <div className="absolute top-2 left-2 z-10">
+          <Briefcase className="w-3.5 h-3.5 text-primary" />
+        </div>
       )}
       <div className="flex items-start justify-between mb-3">
         <div>
