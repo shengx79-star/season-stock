@@ -18,7 +18,7 @@ const Index = () => {
 
   const results = searchStocks(query);
   const filteredResults = activeFilter === "all" ? results : results.filter((s) => s.season === activeFilter);
-  const classifications = useStockClassifications(filteredResults);
+  const { results: classifications } = useStockClassifications(filteredResults);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
