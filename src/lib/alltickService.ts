@@ -1,50 +1,23 @@
 import { supabase } from "@/integrations/supabase/client";
 import { Candle } from "./stockClassifier";
 
-/**
- * AllTick API product code mapping
- * A-shares: 603899.SH (Shanghai), 002140.SZ (Shenzhen)
- * HK stocks: 1801.HK (keep original digits, no leading zero removal)
- */
-export function toAllTickCode(symbol: string): string {
-  // HK stock patterns from our pool: 00700, 00981, 00992, 01801, 01919, 02331, 03690
-  if (/^0[0-9]{4}$/.test(symbol)) {
-    // 5-digit HK: remove one leading zero -> 0700.HK, 0981.HK etc
-    // Actually AllTick uses: 700.HK (no leading zeros at all)
-    return `${parseInt(symbol, 10)}.HK`;
-  }
-  // A-share Shanghai: starts with 6
-  if (symbol.startsWith('6')) {
-    return `${symbol}.SH`;
-  }
-  // A-share Shenzhen: starts with 0 or 3
-  if (symbol.startsWith('0') || symbol.startsWith('3')) {
-    return `${symbol}.SZ`;
-  }
-  return symbol;
+interface EastMoneyKline {
+  date: string;
+  open: number;
+  close: number;
+  high: number;
+  low: number;
+  volume: number;
 }
 
-interface AllTickKline {
-  timestamp: string;
-  open_price: string;
-  close_price: string;
-  high_price: string;
-  low_price: string;
-  volume: string;
-  turnover: string;
-}
-
-function toCandle(k: AllTickKline): Candle {
-  const ts = parseInt(k.timestamp, 10);
-  const d = new Date(ts * 1000);
-  const date = d.toISOString().slice(0, 10);
+function toCandle(k: EastMoneyKline): Candle {
   return {
-    date,
-    open: parseFloat(k.open_price),
-    close: parseFloat(k.close_price),
-    high: parseFloat(k.high_price),
-    low: parseFloat(k.low_price),
-    volume: parseFloat(k.volume),
+    date: k.date,
+    open: k.open,
+    close: k.close,
+    high: k.high,
+    low: k.low,
+    volume: k.volume,
   };
 }
 
@@ -58,34 +31,22 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
-// Rate limiter: track last request time
-let lastRequestTime = 0;
-const MIN_INTERVAL = 11000; // 11 seconds for free tier
-
-async function rateLimitedFetch(code: string, kline_type: number, kline_num: number): Promise<AllTickKline[]> {
-  // Wait if needed
-  const now = Date.now();
-  const elapsed = now - lastRequestTime;
-  if (elapsed < MIN_INTERVAL) {
-    await new Promise((r) => setTimeout(r, MIN_INTERVAL - elapsed));
-  }
-  lastRequestTime = Date.now();
-
+async function fetchKline(symbol: string, kline_type: string, num: number): Promise<Candle[]> {
   const { data, error } = await supabase.functions.invoke('fetch-kline', {
-    body: { code, kline_type, kline_num },
+    body: { symbol, kline_type, num },
   });
 
   if (error) {
-    console.error(`Edge function error for ${code}:`, error);
+    console.error(`Edge function error for ${symbol}:`, error);
     return [];
   }
 
-  return data?.klines || [];
+  const klines: EastMoneyKline[] = data?.klines || [];
+  return klines.map(toCandle);
 }
 
 /**
- * Fetch kline for a single stock (daily + weekly)
- * Uses rate limiting and caching
+ * Fetch daily + weekly kline for a single stock
  */
 export async function fetchSingleKline(
   symbol: string
@@ -96,38 +57,57 @@ export async function fetchSingleKline(
     return { dailyBars: cached.dailyBars, weeklyBars: cached.weeklyBars };
   }
 
-  const atCode = toAllTickCode(symbol);
-
-  // Fetch daily (kline_type=8)
-  const dailyKlines = await rateLimitedFetch(atCode, 8, 120);
-  
-  // Fetch weekly (kline_type=9)  
-  const weeklyKlines = await rateLimitedFetch(atCode, 9, 35);
-
-  const dailyBars = dailyKlines.map(toCandle).sort((a, b) => a.date.localeCompare(b.date));
-  const weeklyBars = weeklyKlines.map(toCandle).sort((a, b) => a.date.localeCompare(b.date));
+  // Fetch daily and weekly in parallel (East Money has no rate limit issues)
+  const [dailyBars, weeklyBars] = await Promise.all([
+    fetchKline(symbol, 'daily', 120),
+    fetchKline(symbol, 'weekly', 35),
+  ]);
 
   // Cache
-  cache.set(symbol, { dailyBars, weeklyBars, fetchedAt: Date.now() });
+  if (dailyBars.length > 0) {
+    cache.set(symbol, { dailyBars, weeklyBars, fetchedAt: Date.now() });
+  }
 
   return { dailyBars, weeklyBars };
 }
 
 /**
- * Batch fetch is not practical with free tier rate limits.
- * This fetches nothing - data loads on-demand per stock.
+ * Batch fetch for multiple stocks (parallel)
  */
 export async function fetchKlineData(
   symbols: string[]
 ): Promise<Map<string, { dailyBars: Candle[]; weeklyBars: Candle[] }>> {
   const result = new Map<string, { dailyBars: Candle[]; weeklyBars: Candle[] }>();
+  const now = Date.now();
 
-  // Only return cached data for batch requests (list view)
+  // Check cache first
+  const uncached: string[] = [];
   for (const sym of symbols) {
     const cached = cache.get(sym);
-    if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
+    if (cached && now - cached.fetchedAt < CACHE_TTL) {
       result.set(sym, { dailyBars: cached.dailyBars, weeklyBars: cached.weeklyBars });
+    } else {
+      uncached.push(sym);
     }
+  }
+
+  if (uncached.length === 0) return result;
+
+  // Fetch all uncached in parallel (East Money is free, no rate limit)
+  const promises = uncached.map(async (sym) => {
+    const [dailyBars, weeklyBars] = await Promise.all([
+      fetchKline(sym, 'daily', 120),
+      fetchKline(sym, 'weekly', 35),
+    ]);
+    return { sym, dailyBars, weeklyBars };
+  });
+
+  const results = await Promise.all(promises);
+  for (const { sym, dailyBars, weeklyBars } of results) {
+    if (dailyBars.length > 0) {
+      cache.set(sym, { dailyBars, weeklyBars, fetchedAt: now });
+    }
+    result.set(sym, { dailyBars, weeklyBars });
   }
 
   return result;
