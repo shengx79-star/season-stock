@@ -19,7 +19,13 @@ const Index = () => {
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState("");
   const [committedQuery, setCommittedQuery] = useState("");
-  const [hasSearched, setHasSearched] = useState(searchParams.get("view") === "list");
+  const [hasSearched, setHasSearched] = useState(() => {
+    if (searchParams.get("view") === "list") return true;
+    const visited = localStorage.getItem("stock4s_visited");
+    if (visited) return true;
+    localStorage.setItem("stock4s_visited", "1");
+    return false;
+  });
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [activeFilter, setActiveFilter] = useState<Season | "all">("all");
   const [lookingUp, setLookingUp] = useState(false);
