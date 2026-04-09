@@ -147,7 +147,7 @@ const Index = () => {
             <input
               ref={inputRef}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => { setQuery(e.target.value); setHasSearched(true); }}
               className="search-input pl-14 pr-12"
               placeholder="搜索股票代码、名称或行业..."
               autoFocus
@@ -159,9 +159,6 @@ const Index = () => {
             )}
           </div>
           <div className="flex justify-center gap-3 mt-6">
-            <button type="submit" className="px-6 py-2.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:shadow-sm hover:border-border border border-transparent transition-all">
-              搜索分析
-            </button>
             <button type="button" onClick={() => { setQuery(""); setHasSearched(true); }} className="px-6 py-2.5 rounded-lg bg-secondary text-secondary-foreground text-sm font-medium hover:shadow-sm hover:border-border border border-transparent transition-all">
               查看全部
             </button>
