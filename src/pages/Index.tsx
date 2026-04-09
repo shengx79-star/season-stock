@@ -17,8 +17,16 @@ const Index = () => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const results = searchStocks(query);
-  const filteredResults = activeFilter === "all" ? results : results.filter((s) => s.season === activeFilter);
-  const { results: classifications, dailyBarsMap } = useStockClassifications(filteredResults);
+  const { results: classifications, dailyBarsMap } = useStockClassifications(results);
+
+  // Filter by classified stage (dynamic), not static stock.season
+  const filteredResults = activeFilter === "all"
+    ? results
+    : results.filter((s) => {
+        const cls = classifications.get(s.symbol);
+        const stage = cls && cls.stage !== "unknown" ? cls.stage : s.season;
+        return stage === activeFilter;
+      });
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
