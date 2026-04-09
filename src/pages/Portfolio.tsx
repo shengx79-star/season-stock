@@ -192,10 +192,12 @@ const Portfolio = () => {
         </div>
       )}
 
-      {/* Main content: left-right split */}
+      {/* Main content: left-right split on desktop, single view on mobile */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: stock list */}
-        <div className="w-80 shrink-0 border-r border-border flex flex-col overflow-hidden">
+        {/* Left: stock list — hidden on mobile when detail is shown */}
+        <div className={`md:w-80 shrink-0 md:border-r border-border flex flex-col overflow-hidden ${
+          mobileShowDetail ? "hidden md:flex" : "flex-1 md:flex-none"
+        }`}>
           {/* Market summary bar */}
           {portfolio && (
             <div className="p-3 border-b border-border bg-card">
@@ -212,7 +214,7 @@ const Portfolio = () => {
                   {Math.round(portfolio.market.temperature)}°
                 </span>
               </div>
-              <div className="flex gap-1 text-[10px]">
+              <div className="flex gap-1 text-[10px] flex-wrap">
                 <span className="px-1.5 py-0.5 rounded bg-secondary">仓位上限 {Math.round(portfolio.market.portfolioCap * 100)}%</span>
                 <span className="px-1.5 py-0.5 rounded bg-secondary">持仓 {formatMoney(portfolio.totalPositionValue)}</span>
               </div>
@@ -224,7 +226,7 @@ const Portfolio = () => {
             {portfolio?.positions.map((pos) => (
               <button
                 key={pos.symbol}
-                onClick={() => { setSelectedSymbol(pos.symbol); setEditingPosition(false); }}
+                onClick={() => { setSelectedSymbol(pos.symbol); setEditingPosition(false); setMobileShowDetail(true); }}
                 className={`w-full px-3 py-2.5 text-left border-l-3 border-b border-border transition-colors ${
                   selectedSymbol === pos.symbol
                     ? `bg-primary/5 ${actionBorderColors[pos.action]}`
@@ -282,8 +284,10 @@ const Portfolio = () => {
           </div>
         </div>
 
-        {/* Right: detail panel */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Right: detail panel — full width on mobile when shown */}
+        <div className={`flex-1 overflow-y-auto ${
+          mobileShowDetail ? "flex flex-col" : "hidden md:block"
+        }`}>
           {selectedPos ? (
             <DetailPanel
               pos={selectedPos}
@@ -295,11 +299,12 @@ const Portfolio = () => {
               onSave={() => handleSavePosition(selectedPos.symbol)}
               onCancel={() => setEditingPosition(false)}
               onFormChange={setPosForm}
-              onDelete={() => { removePosition(selectedPos.symbol); setSelectedSymbol(null); }}
+              onDelete={() => { removePosition(selectedPos.symbol); setSelectedSymbol(null); setMobileShowDetail(false); }}
               onRemoveFromPortfolio={async () => {
                 await togglePortfolio(selectedPos.symbol, false);
                 removePosition(selectedPos.symbol);
                 setSelectedSymbol(null);
+                setMobileShowDetail(false);
               }}
             />
           ) : (
