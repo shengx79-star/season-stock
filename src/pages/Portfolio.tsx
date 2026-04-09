@@ -13,7 +13,7 @@ import {
 } from "@/lib/positionEngine";
 import { seasonLabels, seasonEmojis, type Season } from "@/lib/stockData";
 import { AppNav } from "@/components/AppNav";
-import { Settings, TrendingUp, Trash2, Loader2, DollarSign } from "lucide-react";
+import { Settings, TrendingUp, Trash2, Loader2, DollarSign, Briefcase } from "lucide-react";
 import { toast } from "sonner";
 
 const actionLabels: Record<ActionType, string> = {
@@ -42,7 +42,7 @@ const actionBorderColors: Record<ActionType, string> = {
 };
 
 const Portfolio = () => {
-  const { stocks: stockPool } = useStockPool();
+  const { stocks: stockPool, togglePortfolio } = useStockPool();
   const { config, positions, loading: portfolioLoading, updateConfig, upsertPosition, removePosition } = usePortfolio();
   const { results: classifications, dailyBarsMap } = useStockClassifications(stockPool.filter(s => s.inPortfolio));
 
@@ -271,6 +271,11 @@ const Portfolio = () => {
               onCancel={() => setEditingPosition(false)}
               onFormChange={setPosForm}
               onDelete={() => { removePosition(selectedPos.symbol); setSelectedSymbol(null); }}
+              onRemoveFromPortfolio={async () => {
+                await togglePortfolio(selectedPos.symbol, false);
+                removePosition(selectedPos.symbol);
+                setSelectedSymbol(null);
+              }}
             />
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -298,9 +303,10 @@ interface DetailPanelProps {
   onCancel: () => void;
   onFormChange: (form: { positionValue: string; costBasis: string; shares: string; quotaValue: string }) => void;
   onDelete: () => void;
+  onRemoveFromPortfolio: () => void;
 }
 
-function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit, onSave, onCancel, onFormChange, onDelete }: DetailPanelProps) {
+function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit, onSave, onCancel, onFormChange, onDelete, onRemoveFromPortfolio }: DetailPanelProps) {
   const positionPct = totalAssets > 0 ? (pos.currentPositionValue / totalAssets * 100) : 0;
   const targetPct = totalAssets > 0 ? (pos.finalTargetValue / totalAssets * 100) : 0;
 
@@ -433,6 +439,9 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
             </button>
             <button onClick={onDelete} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/10">
               <Trash2 className="w-4 h-4" /> 删除持仓
+            </button>
+            <button onClick={onRemoveFromPortfolio} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-secondary">
+              <Briefcase className="w-4 h-4" /> 移出仓位管理
             </button>
           </div>
         )}
