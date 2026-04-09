@@ -75,8 +75,13 @@ const Portfolio = () => {
 
   const portfolio = useMemo(() => {
     if (!config || portfolioStocks.length === 0) return null;
-    return computePortfolio(config.totalAssets, config.defaultQuotaPct, positionInputs, classifications);
-  }, [config, positionInputs, classifications, portfolioStocks.length]);
+    const result = computePortfolio(config.totalAssets, config.defaultQuotaPct, positionInputs, classifications);
+    // Use all stocks for market context instead of only portfolio stocks
+    if (allClassifications.size > 0) {
+      result.market = computeMarketContext(allClassifications);
+    }
+    return result;
+  }, [config, positionInputs, classifications, allClassifications, portfolioStocks.length]);
 
   // Auto-select first stock
   useEffect(() => {
