@@ -56,6 +56,39 @@ const Index = () => {
   // Check if query looks like a stock code (digits only)
   const isStockCode = /^\d{5,6}$/.test(query.trim());
   const codeNotInPool = isStockCode && !stockPool.some((s) => s.symbol === query.trim());
+  const isTextQuery = query.trim().length >= 2 && !isStockCode;
+
+  // Auto-search remote when local results empty and query is text
+  useEffect(() => {
+    if (!isTextQuery || filteredResults.length > 0) {
+      setSuggestions([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSearchingRemote(true);
+      try {
+        const results = await searchStockByName(query.trim());
+        setSuggestions(results);
+      } catch { setSuggestions([]); }
+      finally { setSearchingRemote(false); }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [query, isTextQuery, filteredResults.length]);
+
+  const handleAddSuggestion = async (s: StockSuggestion) => {
+    setAddingSymbol(s.symbol);
+    try {
+      const stock = await lookupStock(s.symbol);
+      if (!stock) { toast.error(`未找到 ${s.name}`); return; }
+      const ok = await addStock(stock);
+      if (ok) {
+        toast.success(`已添加 ${stock.name}(${stock.symbol})`);
+        setQuery("");
+        setHasSearched(true);
+      }
+    } catch { toast.error("添加失败"); }
+    finally { setAddingSymbol(null); }
+  };
 
   const handleLookupAndAdd = async () => {
     const symbol = query.trim();
