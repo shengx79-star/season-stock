@@ -147,8 +147,7 @@ const Portfolio = () => {
                 <ChevronLeft className="w-5 h-5" />
               </button>
             ) : null}
-          <div className="flex items-center gap-6">
-            <span className="text-2xl font-bold tracking-tight">
+            <span className="text-xl md:text-2xl font-bold tracking-tight">
               <span className="text-[hsl(var(--spring))]">股</span>
               <span className="text-destructive">票</span>
               <span className="text-[hsl(var(--autumn))]">四</span>
