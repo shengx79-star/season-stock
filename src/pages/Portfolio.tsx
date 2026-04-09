@@ -12,7 +12,7 @@ import {
   type ActionType,
 } from "@/lib/positionEngine";
 import { seasonLabels, seasonEmojis, type Stock } from "@/lib/stockData";
-import { NavLink } from "@/components/NavLink";
+import { AppNav } from "@/components/AppNav";
 import { Settings, TrendingUp, AlertTriangle, ChevronDown, ChevronUp, Plus, Trash2, Loader2, DollarSign } from "lucide-react";
 import { toast } from "sonner";
 
@@ -139,7 +139,7 @@ const Portfolio = () => {
               <span className="text-[hsl(var(--autumn))]">四</span>
               <span className="text-primary">季</span>
             </span>
-            <NavLink />
+            <AppNav />
           </div>
           <button
             onClick={() => {
