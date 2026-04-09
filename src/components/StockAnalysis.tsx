@@ -97,9 +97,12 @@ export const StockAnalysis = ({ stock, classification, dailyBars, onBack }: Stoc
               <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 rounded" style={{ background: "#f59e0b" }} />MA5</span>
               <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 rounded" style={{ background: "#3b82f6" }} />MA14</span>
               <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 rounded" style={{ background: "#a855f7" }} />MA20</span>
+              <span className="text-muted-foreground">|</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 rounded" style={{ background: "#3b82f6" }} />DIF</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 rounded" style={{ background: "#f59e0b" }} />DEA</span>
             </div>
           </div>
-          <KlineChart dailyBars={dailyBars} season={season} bars={90} height={280} />
+          <KlineChart dailyBars={dailyBars} season={season} bars={90} height={340} />
         </div>
       )}
 
