@@ -280,7 +280,7 @@ const Index = () => {
             <input
               ref={inputRef}
               value={query}
-              onChange={(e) => { setQuery(e.target.value); if (e.target.value.trim().length >= 2) setHasSearched(true); }}
+              onChange={(e) => setQuery(e.target.value)}
               className="search-input pl-14 pr-12"
               placeholder="输入股票代码添加，或搜索名称..."
               autoFocus
@@ -300,6 +300,14 @@ const Index = () => {
               >
                 {lookingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 搜索并添加 {query}
+              </button>
+            ) : query.trim() ? (
+              <button
+                type="submit"
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-all"
+              >
+                <Search className="w-4 h-4" />
+                搜索
               </button>
             ) : (
               <button
