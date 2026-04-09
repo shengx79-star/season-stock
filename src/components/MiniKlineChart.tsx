@@ -89,11 +89,33 @@ const CandlestickShape = (props: any) => {
   );
 };
 
-function prepareData(dailyBars: Candle[], bars: number, padding: number) {
-  const recent = dailyBars.slice(-bars);
-  const d: CandleData[] = recent.map((c) => {
+function computeMA(closes: number[], period: number): (number | undefined)[] {
+  return closes.map((_, i) => {
+    if (i < period - 1) return undefined;
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) sum += closes[j];
+    return sum / period;
+  });
+}
+
+function prepareData(dailyBars: Candle[], bars: number, padding: number, withMA = false) {
+  // Take extra bars before the window for MA warmup
+  const warmup = withMA ? 20 : 0;
+  const startIdx = Math.max(0, dailyBars.length - bars - warmup);
+  const extended = dailyBars.slice(startIdx);
+  const closes = extended.map((c) => c.close);
+
+  const ma5 = withMA ? computeMA(closes, 5) : [];
+  const ma14 = withMA ? computeMA(closes, 14) : [];
+  const ma20 = withMA ? computeMA(closes, 20) : [];
+
+  // Only keep the last `bars` entries
+  const offset = extended.length - Math.min(bars, dailyBars.length);
+  const d: CandleData[] = [];
+  for (let i = offset; i < extended.length; i++) {
+    const c = extended[i];
     const isUp = c.close >= c.open;
-    return {
+    d.push({
       date: c.date,
       open: c.open,
       close: c.close,
@@ -102,8 +124,12 @@ function prepareData(dailyBars: Candle[], bars: number, padding: number) {
       volume: c.volume,
       isUp,
       body: isUp ? [c.open, c.close] : [c.close, c.open],
-    };
-  });
+      ma5: ma5[i],
+      ma14: ma14[i],
+      ma20: ma20[i],
+    });
+  }
+
   const allLows = d.map((c) => c.low);
   const allHighs = d.map((c) => c.high);
   const min = Math.min(...allLows) * (1 - padding);
