@@ -1,0 +1,1 @@
+ALTER TABLE public.stock_pool ADD COLUMN in_portfolio boolean NOT NULL DEFAULT false;

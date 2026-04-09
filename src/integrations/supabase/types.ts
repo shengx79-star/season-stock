@@ -89,6 +89,7 @@ export type Database = {
           change_percent: number
           created_at: string
           id: string
+          in_portfolio: boolean
           market_cap: string
           name: string
           pe: number
@@ -103,6 +104,7 @@ export type Database = {
           change_percent?: number
           created_at?: string
           id?: string
+          in_portfolio?: boolean
           market_cap?: string
           name: string
           pe?: number
@@ -117,6 +119,7 @@ export type Database = {
           change_percent?: number
           created_at?: string
           id?: string
+          in_portfolio?: boolean
           market_cap?: string
           name?: string
           pe?: number
