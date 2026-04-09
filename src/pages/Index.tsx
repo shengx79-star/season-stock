@@ -26,12 +26,18 @@ const Index = () => {
   const [addingSymbol, setAddingSymbol] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { stocks: stockPool, addStock, removeStock } = useStockPool();
+  const { stocks: stockPool, addStock, removeStock, togglePortfolio } = useStockPool();
 
   const handleDeleteStock = async (symbol: string) => {
     const ok = await removeStock(symbol);
     if (ok) toast.success(`已从股票池移除 ${symbol}`);
     else toast.error("删除失败");
+  };
+
+  const handleTogglePortfolio = async (symbol: string, value: boolean) => {
+    const ok = await togglePortfolio(symbol, value);
+    if (ok) toast.success(value ? "已纳入仓位管理" : "已移出仓位管理");
+    else toast.error("操作失败");
   };
 
   // Search within the pool using committed query (only updates on Enter)
@@ -218,6 +224,7 @@ const Index = () => {
                   dailyBars={dailyBarsMap.get(stock.symbol)}
                   onClick={handleStockClick}
                   onDelete={handleDeleteStock}
+                  onTogglePortfolio={handleTogglePortfolio}
                 />
               ))}
             </div>

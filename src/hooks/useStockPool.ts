@@ -28,6 +28,7 @@ export function useStockPool() {
       pe: Number(row.pe),
       sector: row.sector,
       season: row.season as Season,
+      inPortfolio: !!row.in_portfolio,
     }));
 
     setStocks(mapped);
@@ -75,5 +76,15 @@ export function useStockPool() {
     return true;
   }, [fetchStocks]);
 
-  return { stocks, loading, addStock, removeStock, refetch: fetchStocks };
+  const togglePortfolio = useCallback(async (symbol: string, value: boolean): Promise<boolean> => {
+    const { error } = await supabase.from("stock_pool").update({ in_portfolio: value }).eq("symbol", symbol);
+    if (error) {
+      console.error("Failed to toggle in_portfolio:", error);
+      return false;
+    }
+    await fetchStocks();
+    return true;
+  }, [fetchStocks]);
+
+  return { stocks, loading, addStock, removeStock, togglePortfolio, refetch: fetchStocks };
 }
