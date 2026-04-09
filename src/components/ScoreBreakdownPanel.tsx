@@ -88,25 +88,46 @@ function CategoryLabel({ category }: { category: string }) {
   );
 }
 
-function ScoreRow({ label, scores, cap }: { label: string; scores: StageScores; cap: number }) {
+const CATEGORY_PREFIX_MAP: Record<string, string> = {
+  TREND: "趋势:",
+  TURN: "转折:",
+  EXT: "扩展:",
+  WEEKLY: "周线:",
+};
+
+function ScoreRow({ label, scores, cap, notes }: { label: string; scores: StageScores; cap: number; notes: string[] }) {
+  const prefix = CATEGORY_PREFIX_MAP[label] || "";
+  const relevantNotes = notes.filter(n => n.startsWith(prefix));
+
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <CategoryLabel category={label} />
-      <div className="flex-1 grid grid-cols-4 gap-1">
-        {STAGES.map((s) => (
-          <div key={s} className="text-center">
-            <div className={`rounded px-1.5 py-0.5 font-mono ${scores[s] > 0 ? `bg-${s}-light text-${s}-foreground` : "text-muted-foreground/50"}`}>
-              {scores[s]}/{cap}
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-2 text-xs">
+        <CategoryLabel category={label} />
+        <div className="flex-1 grid grid-cols-4 gap-1">
+          {STAGES.map((s) => (
+            <div key={s} className="text-center">
+              <div className={`rounded px-1.5 py-0.5 font-mono ${scores[s] > 0 ? `bg-${s}-light text-${s}-foreground` : "text-muted-foreground/50"}`}>
+                {scores[s]}/{cap}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
+      {relevantNotes.length > 0 && (
+        <div className="ml-[72px] space-y-0">
+          {relevantNotes.map((note, i) => (
+            <div key={i} className="text-[10px] text-muted-foreground/70 leading-tight">
+              • {note.replace(prefix + " ", "")}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 export const ScoreBreakdownPanel = ({ result }: ScoreBreakdownPanelProps) => {
-  const { scores, scoreBreakdown, turnSignals, confidence, confidenceLevel, seasonScore } = result;
+  const { scores, scoreBreakdown, turnSignals, confidence, confidenceLevel, seasonScore, notes } = result;
 
   return (
     <div className="space-y-4">
@@ -155,10 +176,10 @@ export const ScoreBreakdownPanel = ({ result }: ScoreBreakdownPanelProps) => {
               <span key={s} className="text-xs text-muted-foreground">{seasonEmojis[s]}</span>
             ))}
           </div>
-          <ScoreRow label="TREND" scores={scoreBreakdown.trend} cap={6} />
-          <ScoreRow label="TURN" scores={scoreBreakdown.turn} cap={6} />
-          <ScoreRow label="EXT" scores={scoreBreakdown.extension} cap={3} />
-          <ScoreRow label="WEEKLY" scores={scoreBreakdown.weekly} cap={3} />
+          <ScoreRow label="TREND" scores={scoreBreakdown.trend} cap={6} notes={notes} />
+          <ScoreRow label="TURN" scores={scoreBreakdown.turn} cap={6} notes={notes} />
+          <ScoreRow label="EXT" scores={scoreBreakdown.extension} cap={3} notes={notes} />
+          <ScoreRow label="WEEKLY" scores={scoreBreakdown.weekly} cap={3} notes={notes} />
         </div>
       </div>
 
