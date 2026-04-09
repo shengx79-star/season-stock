@@ -91,8 +91,15 @@ export const StockAnalysis = ({ stock, classification, dailyBars, onBack }: Stoc
       {/* K-line Chart */}
       {dailyBars && dailyBars.length > 2 && (
         <div className="rounded-2xl border border-border p-4 mb-6">
-          <h3 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">价格走势 (90日)</h3>
-          <KlineChart dailyBars={dailyBars} season={season} bars={90} height={180} />
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">价格走势 (90日)</h3>
+            <div className="flex items-center gap-3 text-[10px]">
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 rounded" style={{ background: "#f59e0b" }} />MA5</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 rounded" style={{ background: "#3b82f6" }} />MA14</span>
+              <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 rounded" style={{ background: "#a855f7" }} />MA20</span>
+            </div>
+          </div>
+          <KlineChart dailyBars={dailyBars} season={season} bars={90} height={280} />
         </div>
       )}
 
