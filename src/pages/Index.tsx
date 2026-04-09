@@ -76,7 +76,7 @@ const Index = () => {
       finally { setSearchingRemote(false); }
     }, 400);
     return () => clearTimeout(timer);
-  }, [query, isTextQuery, filteredResults.length]);
+  }, [committedQuery, isCommittedTextQuery, filteredResults.length]);
 
   const handleAddSuggestion = async (s: StockSuggestion) => {
     setAddingSymbol(s.symbol);
