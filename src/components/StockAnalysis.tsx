@@ -1,14 +1,16 @@
 import { Stock, seasonLabels, seasonDescriptions, seasonEmojis, Season } from "@/lib/stockData";
-import { ClassificationResult } from "@/lib/stockClassifier";
+import { ClassificationResult, Candle } from "@/lib/stockClassifier";
 import { SeasonBadge } from "./SeasonBadge";
 import { SeasonScoreBar } from "./SeasonScoreBar";
 import { ScoreBreakdownPanel } from "./ScoreBreakdownPanel";
+import { KlineChart } from "./MiniKlineChart";
 import { ArrowLeft, BarChart3, Activity, DollarSign } from "lucide-react";
 import { useState, useEffect } from "react";
 
 interface StockAnalysisProps {
   stock: Stock;
   classification?: ClassificationResult;
+  dailyBars?: Candle[];
   onBack: () => void;
 }
 
@@ -39,7 +41,7 @@ const analysisTexts: Record<string, string[]> = {
   ],
 };
 
-export const StockAnalysis = ({ stock, classification, onBack }: StockAnalysisProps) => {
+export const StockAnalysis = ({ stock, classification, dailyBars, onBack }: StockAnalysisProps) => {
   const [visibleLines, setVisibleLines] = useState(0);
   const season = (classification?.stage !== "unknown" ? classification?.stage : stock.season) as Season;
   const lines = analysisTexts[season] || analysisTexts.spring;
@@ -85,6 +87,14 @@ export const StockAnalysis = ({ stock, classification, onBack }: StockAnalysisPr
           </p>
         </div>
       </div>
+
+      {/* K-line Chart */}
+      {dailyBars && dailyBars.length > 2 && (
+        <div className="rounded-2xl border border-border p-4 mb-6">
+          <h3 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">价格走势 (90日)</h3>
+          <KlineChart dailyBars={dailyBars} season={season} bars={90} height={180} />
+        </div>
+      )}
 
       {/* Season Score */}
       {classification && (
