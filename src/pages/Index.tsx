@@ -15,6 +15,7 @@ const seasonFilters: (Season | "all")[] = ["all", "spring", "summer", "autumn", 
 
 const Index = () => {
   const [query, setQuery] = useState("");
+  const [committedQuery, setCommittedQuery] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [activeFilter, setActiveFilter] = useState<Season | "all">("all");
