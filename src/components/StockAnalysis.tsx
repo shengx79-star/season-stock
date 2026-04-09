@@ -1,10 +1,14 @@
-import { Stock, seasonLabels, seasonDescriptions, seasonEmojis } from "@/lib/stockData";
+import { Stock, seasonLabels, seasonDescriptions, seasonEmojis, Season } from "@/lib/stockData";
+import { ClassificationResult } from "@/lib/stockClassifier";
 import { SeasonBadge } from "./SeasonBadge";
-import { ArrowLeft, TrendingUp, TrendingDown, BarChart3, Activity, DollarSign } from "lucide-react";
+import { SeasonScoreBar } from "./SeasonScoreBar";
+import { ScoreBreakdownPanel } from "./ScoreBreakdownPanel";
+import { ArrowLeft, BarChart3, Activity, DollarSign } from "lucide-react";
 import { useState, useEffect } from "react";
 
 interface StockAnalysisProps {
   stock: Stock;
+  classification?: ClassificationResult;
   onBack: () => void;
 }
 
@@ -35,19 +39,17 @@ const analysisTexts: Record<string, string[]> = {
   ],
 };
 
-export const StockAnalysis = ({ stock, onBack }: StockAnalysisProps) => {
+export const StockAnalysis = ({ stock, classification, onBack }: StockAnalysisProps) => {
   const [visibleLines, setVisibleLines] = useState(0);
-  const lines = analysisTexts[stock.season] || analysisTexts.spring;
+  const season = (classification?.stage !== "unknown" ? classification?.stage : stock.season) as Season;
+  const lines = analysisTexts[season] || analysisTexts.spring;
   const isUp = stock.change >= 0;
 
   useEffect(() => {
     setVisibleLines(0);
     const timer = setInterval(() => {
       setVisibleLines((prev) => {
-        if (prev >= lines.length) {
-          clearInterval(timer);
-          return prev;
-        }
+        if (prev >= lines.length) { clearInterval(timer); return prev; }
         return prev + 1;
       });
     }, 400);
@@ -68,17 +70,32 @@ export const StockAnalysis = ({ stock, onBack }: StockAnalysisProps) => {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold text-foreground">{stock.symbol}</h1>
-            <SeasonBadge season={stock.season} />
+            <SeasonBadge
+              season={season}
+              confidence={classification?.confidence}
+              confidenceLevel={classification?.confidenceLevel}
+            />
           </div>
           <p className="text-muted-foreground mt-1">{stock.name} · {stock.sector}</p>
         </div>
         <div className="text-right">
           <p className="text-3xl font-bold text-foreground">${stock.price.toFixed(2)}</p>
-          <p className={`text-sm font-medium mt-1 ${isUp ? "text-spring" : "text-destructive"}`}>
+          <p className={`text-sm font-medium mt-1 ${isUp ? "text-[hsl(var(--spring))]" : "text-destructive"}`}>
             {isUp ? "+" : ""}{stock.change.toFixed(2)} ({isUp ? "+" : ""}{stock.changePercent.toFixed(2)}%)
           </p>
         </div>
       </div>
+
+      {/* Season Score */}
+      {classification && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-muted-foreground">季节温度</span>
+            <span className="text-xs font-medium text-foreground">{classification.seasonScore}/100</span>
+          </div>
+          <SeasonScoreBar score={classification.seasonScore} />
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mb-8">
@@ -103,14 +120,41 @@ export const StockAnalysis = ({ stock, onBack }: StockAnalysisProps) => {
       </div>
 
       {/* Season status */}
-      <div className={`rounded-2xl p-5 mb-6 bg-${stock.season}-light`}>
+      <div className={`rounded-2xl p-5 mb-6 bg-${season}-light`}>
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-2xl">{seasonEmojis[stock.season]}</span>
-          <h2 className={`text-lg font-bold text-${stock.season}-foreground`}>
-            当前状态：{seasonLabels[stock.season]} — {seasonDescriptions[stock.season]}
+          <span className="text-2xl">{seasonEmojis[season]}</span>
+          <h2 className={`text-lg font-bold text-${season}-foreground`}>
+            当前状态：{seasonLabels[season]} — {seasonDescriptions[season]}
           </h2>
         </div>
       </div>
+
+      {/* V2 Score Breakdown */}
+      {classification && classification.stage !== "unknown" && (
+        <div className="rounded-2xl border border-border p-6 mb-6">
+          <h3 className="font-medium text-foreground mb-4 flex items-center gap-2">
+            <span className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+              <span className="text-primary-foreground text-xs font-bold">V2</span>
+            </span>
+            量化评分明细
+          </h3>
+          <ScoreBreakdownPanel result={classification} />
+        </div>
+      )}
+
+      {/* Classification Notes */}
+      {classification && classification.notes.length > 0 && (
+        <div className="rounded-2xl border border-border p-6 mb-6">
+          <h3 className="font-medium text-foreground mb-3">📋 分类依据</h3>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {classification.notes.map((note, i) => (
+              <p key={i} className="text-xs text-muted-foreground leading-relaxed">
+                • {note}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* AI Analysis */}
       <div className="rounded-2xl border border-border p-6">
