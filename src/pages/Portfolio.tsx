@@ -44,7 +44,7 @@ const actionBorderColors: Record<ActionType, string> = {
 const Portfolio = () => {
   const { stocks: stockPool } = useStockPool();
   const { config, positions, loading: portfolioLoading, updateConfig, upsertPosition, removePosition } = usePortfolio();
-  const { results: classifications, dailyBarsMap } = useStockClassifications(stockPool);
+  const { results: classifications, dailyBarsMap } = useStockClassifications(stockPool.filter(s => s.inPortfolio));
 
   const [showConfig, setShowConfig] = useState(false);
   const [editTotalAssets, setEditTotalAssets] = useState("");
@@ -53,8 +53,10 @@ const Portfolio = () => {
   const [editingPosition, setEditingPosition] = useState(false);
   const [posForm, setPosForm] = useState({ positionValue: "", costBasis: "", shares: "", quotaValue: "" });
 
+  const portfolioStocks = useMemo(() => stockPool.filter(s => s.inPortfolio), [stockPool]);
+
   const positionInputs: PositionInput[] = useMemo(() => {
-    return stockPool.map((stock) => {
+    return portfolioStocks.map((stock) => {
       const pos = positions.find((p) => p.symbol === stock.symbol);
       const dailyBars = dailyBarsMap.get(stock.symbol) || [];
       const atr20 = computeATR20(dailyBars);
@@ -66,12 +68,12 @@ const Portfolio = () => {
         themeCluster: pos?.themeCluster ?? "", liquidityLevel: pos?.liquidityLevel ?? "good",
       };
     });
-  }, [stockPool, positions, dailyBarsMap]);
+  }, [portfolioStocks, positions, dailyBarsMap]);
 
   const portfolio = useMemo(() => {
-    if (!config || stockPool.length === 0) return null;
+    if (!config || portfolioStocks.length === 0) return null;
     return computePortfolio(config.totalAssets, config.defaultQuotaPct, positionInputs, classifications);
-  }, [config, positionInputs, classifications, stockPool.length]);
+  }, [config, positionInputs, classifications, portfolioStocks.length]);
 
   // Auto-select first stock
   useEffect(() => {
