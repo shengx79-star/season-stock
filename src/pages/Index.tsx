@@ -228,8 +228,39 @@ const Index = () => {
               </div>
             )}
             {filteredResults.length === 0 && !codeNotInPool && (
-              <div className="text-center py-16">
-                <p className="text-muted-foreground">没有找到匹配的股票</p>
+              <div className="text-center py-12">
+                {searchingRemote ? (
+                  <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>正在搜索外部数据源...</span>
+                  </div>
+                ) : suggestions.length > 0 ? (
+                  <div>
+                    <p className="text-muted-foreground mb-4">股票池中未找到，以下是外部搜索结果：</p>
+                    <div className="max-w-md mx-auto space-y-2">
+                      {suggestions.map((s) => (
+                        <button
+                          key={s.symbol}
+                          onClick={() => handleAddSuggestion(s)}
+                          disabled={addingSymbol === s.symbol}
+                          className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors disabled:opacity-50"
+                        >
+                          <div className="text-left">
+                            <span className="text-sm font-medium text-foreground">{s.name}</span>
+                            <span className="text-xs text-muted-foreground ml-2">{s.symbol}</span>
+                          </div>
+                          {addingSymbol === s.symbol ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                          ) : (
+                            <Plus className="w-4 h-4 text-muted-foreground" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">没有找到匹配的股票</p>
+                )}
               </div>
             )}
           </div>
