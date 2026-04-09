@@ -251,7 +251,7 @@ const Portfolio = () => {
             ))}
             {(!portfolio || portfolio.positions.length === 0) && (
               <div className="p-6 text-center text-muted-foreground text-xs">
-                股票池为空
+                请在四季分析页面标记股票进入仓位管理
               </div>
             )}
           </div>
