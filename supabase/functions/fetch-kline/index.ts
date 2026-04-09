@@ -127,13 +127,6 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Log keys for debugging
-        const stockData = data?.data?.[code];
-        if (stockData) {
-          console.log(`${symbol} keys: ${Object.keys(stockData).join(',')}`);
-        } else {
-          console.log(`${symbol} no data at data.data.${code}, top keys: ${JSON.stringify(Object.keys(data?.data || {}))}`);
-        }
 
         const klines = period === 'week' 
           ? parseWeeklyKlines(data, code) 
