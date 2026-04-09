@@ -59,18 +59,18 @@ const Index = () => {
   // Check if query looks like a stock code (digits only)
   const isStockCode = /^\d{5,6}$/.test(query.trim());
   const codeNotInPool = isStockCode && !stockPool.some((s) => s.symbol === query.trim());
-  const isTextQuery = query.trim().length >= 2 && !isStockCode;
+  const isCommittedTextQuery = committedQuery.trim().length >= 2 && !/^\d{5,6}$/.test(committedQuery.trim());
 
-  // Auto-search remote when local results empty and query is text
+  // Auto-search remote when local results empty and committed query is text
   useEffect(() => {
-    if (!isTextQuery || filteredResults.length > 0) {
+    if (!isCommittedTextQuery || filteredResults.length > 0) {
       setSuggestions([]);
       return;
     }
     const timer = setTimeout(async () => {
       setSearchingRemote(true);
       try {
-        const results = await searchStockByName(query.trim());
+        const results = await searchStockByName(committedQuery.trim());
         setSuggestions(results);
       } catch { setSuggestions([]); }
       finally { setSearchingRemote(false); }
