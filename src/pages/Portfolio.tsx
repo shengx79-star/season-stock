@@ -240,6 +240,11 @@ const Portfolio = () => {
                       {pos.currentPositionValue > 0 && (
                         <span className="text-muted-foreground">持仓 {formatMoney(pos.currentPositionValue)}</span>
                       )}
+                      {pos.costBasis > 0 && (
+                        <span className={`font-medium ${pos.pnlPct > 0 ? "text-[hsl(var(--summer))]" : pos.pnlPct < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                          {pos.pnlPct > 0 ? "+" : ""}{pos.pnlPct.toFixed(1)}%
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="text-right shrink-0 ml-2">
