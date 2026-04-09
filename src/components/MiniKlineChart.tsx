@@ -105,9 +105,26 @@ function computeMA(closes: number[], period: number): (number | undefined)[] {
   });
 }
 
+function computeEMA(data: number[], period: number): number[] {
+  const k = 2 / (period + 1);
+  const ema: number[] = [data[0]];
+  for (let i = 1; i < data.length; i++) {
+    ema.push(data[i] * k + ema[i - 1] * (1 - k));
+  }
+  return ema;
+}
+
+function computeMACD(closes: number[]): { dif: number[]; dea: number[]; bar: number[] } {
+  const ema12 = computeEMA(closes, 12);
+  const ema26 = computeEMA(closes, 26);
+  const dif = ema12.map((v, i) => v - ema26[i]);
+  const dea = computeEMA(dif, 9);
+  const bar = dif.map((v, i) => (v - dea[i]) * 2);
+  return { dif, dea, bar };
+}
+
 function prepareData(dailyBars: Candle[], bars: number, padding: number, withMA = false) {
-  // Take extra bars before the window for MA warmup
-  const warmup = withMA ? 20 : 0;
+  const warmup = withMA ? 35 : 0; // extra warmup for MACD (26+9)
   const startIdx = Math.max(0, dailyBars.length - bars - warmup);
   const extended = dailyBars.slice(startIdx);
   const closes = extended.map((c) => c.close);
@@ -115,8 +132,8 @@ function prepareData(dailyBars: Candle[], bars: number, padding: number, withMA 
   const ma5 = withMA ? computeMA(closes, 5) : [];
   const ma14 = withMA ? computeMA(closes, 14) : [];
   const ma20 = withMA ? computeMA(closes, 20) : [];
+  const macd = withMA ? computeMACD(closes) : null;
 
-  // Only keep the last `bars` entries
   const offset = extended.length - Math.min(bars, dailyBars.length);
   const d: CandleData[] = [];
   for (let i = offset; i < extended.length; i++) {
@@ -134,6 +151,9 @@ function prepareData(dailyBars: Candle[], bars: number, padding: number, withMA 
       ma5: ma5[i],
       ma14: ma14[i],
       ma20: ma20[i],
+      macdDIF: macd?.dif[i],
+      macdDEA: macd?.dea[i],
+      macdBar: macd?.bar[i],
     });
   }
 
