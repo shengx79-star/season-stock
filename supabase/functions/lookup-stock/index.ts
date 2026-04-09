@@ -91,9 +91,9 @@ async function searchByName(keyword: string) {
     const mkt = parts[0]; // sh, sz, hk
     const code = parts[1];
     const name = parts[2];
-    const type = parts[3]; // GP=股票, ZS=指数, JJ=基金, etc.
-    // Only include stocks (GP)
-    if (type !== 'GP') continue;
+    const type = parts[3]; // GP=股票, GP-A, ZS=指数, JJ=基金, etc.
+    // Only include stocks (GP or GP-A/GP-B)
+    if (!type.toUpperCase().startsWith('GP')) continue;
     results.push({ market: mkt, symbol: code, name });
   }
 
