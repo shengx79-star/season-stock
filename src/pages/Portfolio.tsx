@@ -14,7 +14,7 @@ import {
 } from "@/lib/positionEngine";
 import { seasonLabels, seasonEmojis, type Season } from "@/lib/stockData";
 import { AppNav } from "@/components/AppNav";
-import { Settings, TrendingUp, Trash2, Loader2, DollarSign, Briefcase } from "lucide-react";
+import { Settings, TrendingUp, Trash2, Loader2, DollarSign, Briefcase, ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 
 const actionLabels: Record<ActionType, string> = {
@@ -53,6 +53,7 @@ const Portfolio = () => {
   const [editTotalAssets, setEditTotalAssets] = useState("");
   const [editQuotaPct, setEditQuotaPct] = useState("");
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const [editingPosition, setEditingPosition] = useState(false);
   const [posForm, setPosForm] = useState({ positionValue: "", costBasis: "", shares: "", quotaValue: "" });
 
@@ -138,10 +139,15 @@ const Portfolio = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="border-b border-border px-6 py-3 shrink-0">
+      <header className="border-b border-border px-4 md:px-6 py-3 shrink-0">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <span className="text-2xl font-bold tracking-tight">
+          <div className="flex items-center gap-3 md:gap-6 min-w-0">
+            {mobileShowDetail && selectedSymbol ? (
+              <button onClick={() => setMobileShowDetail(false)} className="md:hidden p-1 -ml-1 rounded hover:bg-secondary">
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+            ) : null}
+            <span className="text-xl md:text-2xl font-bold tracking-tight">
               <span className="text-[hsl(var(--spring))]">股</span>
               <span className="text-destructive">票</span>
               <span className="text-[hsl(var(--autumn))]">四</span>
@@ -186,10 +192,12 @@ const Portfolio = () => {
         </div>
       )}
 
-      {/* Main content: left-right split */}
+      {/* Main content: left-right split on desktop, single view on mobile */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: stock list */}
-        <div className="w-80 shrink-0 border-r border-border flex flex-col overflow-hidden">
+        {/* Left: stock list — hidden on mobile when detail is shown */}
+        <div className={`md:w-80 shrink-0 md:border-r border-border flex flex-col overflow-hidden ${
+          mobileShowDetail ? "hidden md:flex" : "flex-1 md:flex-none"
+        }`}>
           {/* Market summary bar */}
           {portfolio && (
             <div className="p-3 border-b border-border bg-card">
@@ -206,7 +214,7 @@ const Portfolio = () => {
                   {Math.round(portfolio.market.temperature)}°
                 </span>
               </div>
-              <div className="flex gap-1 text-[10px]">
+              <div className="flex gap-1 text-[10px] flex-wrap">
                 <span className="px-1.5 py-0.5 rounded bg-secondary">仓位上限 {Math.round(portfolio.market.portfolioCap * 100)}%</span>
                 <span className="px-1.5 py-0.5 rounded bg-secondary">持仓 {formatMoney(portfolio.totalPositionValue)}</span>
               </div>
@@ -218,7 +226,7 @@ const Portfolio = () => {
             {portfolio?.positions.map((pos) => (
               <button
                 key={pos.symbol}
-                onClick={() => { setSelectedSymbol(pos.symbol); setEditingPosition(false); }}
+                onClick={() => { setSelectedSymbol(pos.symbol); setEditingPosition(false); setMobileShowDetail(true); }}
                 className={`w-full px-3 py-2.5 text-left border-l-3 border-b border-border transition-colors ${
                   selectedSymbol === pos.symbol
                     ? `bg-primary/5 ${actionBorderColors[pos.action]}`
@@ -276,8 +284,10 @@ const Portfolio = () => {
           </div>
         </div>
 
-        {/* Right: detail panel */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Right: detail panel — full width on mobile when shown */}
+        <div className={`flex-1 overflow-y-auto ${
+          mobileShowDetail ? "flex flex-col" : "hidden md:block"
+        }`}>
           {selectedPos ? (
             <DetailPanel
               pos={selectedPos}
@@ -289,11 +299,12 @@ const Portfolio = () => {
               onSave={() => handleSavePosition(selectedPos.symbol)}
               onCancel={() => setEditingPosition(false)}
               onFormChange={setPosForm}
-              onDelete={() => { removePosition(selectedPos.symbol); setSelectedSymbol(null); }}
+              onDelete={() => { removePosition(selectedPos.symbol); setSelectedSymbol(null); setMobileShowDetail(false); }}
               onRemoveFromPortfolio={async () => {
                 await togglePortfolio(selectedPos.symbol, false);
                 removePosition(selectedPos.symbol);
                 setSelectedSymbol(null);
+                setMobileShowDetail(false);
               }}
             />
           ) : (
@@ -330,7 +341,7 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
   const targetPct = totalAssets > 0 ? (pos.finalTargetValue / totalAssets * 100) : 0;
 
   return (
-    <div className="p-6 space-y-6 max-w-2xl">
+    <div className="p-4 md:p-6 space-y-5 md:space-y-6 max-w-2xl">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -385,7 +396,7 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
       {/* Details grid */}
       <div className="space-y-2">
         <h3 className="text-sm font-semibold">详细参数</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
           <DetailItem label="当前价" value={`¥${pos.currentPrice.toFixed(2)}`} />
           <DetailItem label="成本价" value={pos.costBasis > 0 ? `¥${pos.costBasis.toFixed(2)}` : "—"} />
           <DetailItem label="盈亏" value={pos.costBasis > 0 ? `${pos.pnlPct.toFixed(1)}%` : "—"}
@@ -447,7 +458,7 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
                   className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm" placeholder="留空用默认" />
               </div>
             </div>
-            <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
               <button onClick={onSave} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">保存</button>
               <button onClick={onCancel} className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm">取消</button>
             </div>
