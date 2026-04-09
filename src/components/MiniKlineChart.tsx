@@ -30,6 +30,9 @@ interface CandleData {
   volume: number;
   isUp: boolean;
   body: [number, number];
+  ma5?: number;
+  ma14?: number;
+  ma20?: number;
 }
 
 const UP_COLOR = "#22c55e";
