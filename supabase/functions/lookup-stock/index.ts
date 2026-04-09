@@ -71,6 +71,7 @@ async function fetchQuote(symbol: string) {
 async function searchByName(keyword: string) {
   // Use Tencent smartbox suggest API
   const url = `https://smartbox.gtimg.cn/s3/?v=2&q=${encodeURIComponent(keyword)}&t=all`;
+  console.log("Search URL:", url);
   const resp = await fetch(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -78,6 +79,7 @@ async function searchByName(keyword: string) {
     },
   });
   const text = await resp.text();
+  console.log("Search response:", text);
   // Format: v_hint="sz~000001~平安银行~GP~...^sh~600519~贵州茅台~GP~..."
   const match = text.match(/"([^"]*)"/);
   if (!match || !match[1]) return [];
