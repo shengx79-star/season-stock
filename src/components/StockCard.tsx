@@ -46,8 +46,9 @@ export const StockCard = ({ stock, classification, dailyBars, onClick, onDelete,
         )}
       </div>
       {inPortfolio && (
-        <div className="absolute top-2 left-2 z-10">
-          <Briefcase className="w-3.5 h-3.5 text-primary" />
+        <div className="absolute top-2 left-2 z-10 flex items-center gap-1 px-1.5 py-0.5 rounded bg-primary/15 text-primary">
+          <Briefcase className="w-3 h-3" />
+          <span className="text-[10px] font-medium">仓位</span>
         </div>
       )}
       <div className="flex items-start justify-between mb-3">
