@@ -4,28 +4,21 @@ const corsHeaders = {
 }
 
 /**
- * East Money (东方财富) free public K-line API
- * No API key needed, supports all A-shares and HK stocks
+ * Tencent Finance K-line API (腾讯财经)
+ * Format: https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=CODE,day,START,END,COUNT,qfq
+ * 
+ * Code format:
+ *   A-share SH: sh600309
+ *   A-share SZ: sz002140
+ *   HK: hk01801
  */
-const KLINE_API = 'https://push2his.eastmoney.com/api/qt/stock/kline/get'
-
-// Market codes for East Money: 0=SZ, 1=SH, 116=HK
-function toSecid(symbol: string): string {
-  // HK stocks: 00700 -> 116.00700, 01801 -> 116.01801
-  if (/^0[0-9]{4}$/.test(symbol)) {
-    return `116.${symbol}`;
-  }
+function toTencentCode(symbol: string): string {
+  // HK stocks: 5-digit starting with 0
+  if (/^0[0-9]{4}$/.test(symbol)) return `hk${symbol}`;
   // Shanghai: starts with 6
-  if (symbol.startsWith('6')) {
-    return `1.${symbol}`;
-  }
+  if (symbol.startsWith('6')) return `sh${symbol}`;
   // Shenzhen: starts with 0 or 3
-  return `0.${symbol}`;
-}
-
-// klt: 101=daily, 102=weekly
-function kltFromType(kline_type: string): string {
-  return kline_type === 'weekly' ? '102' : '101';
+  return `sz${symbol}`;
 }
 
 interface KlineItem {
@@ -37,20 +30,59 @@ interface KlineItem {
   volume: number;
 }
 
-function parseKlines(raw: string[]): KlineItem[] {
-  // Each item is "2026-04-01,12.50,12.80,13.00,12.30,1234567,..."
-  // Format: date,open,close,high,low,volume,amount,...
-  return raw.map((line) => {
-    const parts = line.split(',');
+function parseTencentKlines(data: any, code: string): KlineItem[] {
+  if (!data?.data?.[code]) return [];
+  
+  const stockData = data.data[code];
+  // Try multiple possible keys: "day", "qfqday", "priceday"
+  const klines = stockData.qfqday || stockData.day || stockData.priceday || [];
+  
+  return klines.map((item: any[]) => {
+    // Format: [date, open, close, high, low, volume]
     return {
-      date: parts[0],
-      open: parseFloat(parts[1]),
-      close: parseFloat(parts[2]),
-      high: parseFloat(parts[3]),
-      low: parseFloat(parts[4]),
-      volume: parseFloat(parts[5]),
+      date: item[0],
+      open: parseFloat(item[1]),
+      close: parseFloat(item[2]),
+      high: parseFloat(item[3]),
+      low: parseFloat(item[4]),
+      volume: parseFloat(item[5] || '0'),
     };
   });
+}
+
+function parseWeeklyKlines(data: any, code: string): KlineItem[] {
+  if (!data?.data?.[code]) return [];
+  
+  const stockData = data.data[code];
+  const klines = stockData.qfqweek || stockData.week || [];
+  
+  return klines.map((item: any[]) => ({
+    date: item[0],
+    open: parseFloat(item[1]),
+    close: parseFloat(item[2]),
+    high: parseFloat(item[3]),
+    low: parseFloat(item[4]),
+    volume: parseFloat(item[5] || '0'),
+  }));
+}
+
+async function fetchWithRetry(url: string, retries = 3): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const resp = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://web.ifzq.gtimg.cn/',
+        },
+      });
+      return resp;
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      console.log(`Retry ${i + 1}/${retries}`);
+      await new Promise(r => setTimeout(r, 300 * (i + 1)));
+    }
+  }
+  throw new Error('unreachable');
 }
 
 Deno.serve(async (req) => {
@@ -59,42 +91,67 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { symbol, kline_type = 'daily', num = 120 } = await req.json()
+    const body = await req.json();
+    const symbols: string[] = body.symbols || (body.symbol ? [body.symbol] : []);
+    const kline_type = body.kline_type || 'daily';
+    const num = body.num || 120;
 
-    if (!symbol || typeof symbol !== 'string') {
-      return new Response(JSON.stringify({ error: 'symbol string required' }), {
+    if (symbols.length === 0) {
+      return new Response(JSON.stringify({ error: 'symbol or symbols required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      });
     }
 
-    const secid = toSecid(symbol);
-    const klt = kltFromType(kline_type);
+    const period = kline_type === 'weekly' ? 'week' : 'day';
+    const results: Record<string, KlineItem[]> = {};
 
-    const params = new URLSearchParams({
-      secid,
-      fields1: 'f1,f2,f3,f4,f5,f6',
-      fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61',
-      klt,
-      fqt: '1', // 前复权
-      end: '20500101',
-      lmt: num.toString(),
-    });
+    for (let i = 0; i < symbols.length; i++) {
+      const symbol = symbols[i];
+      const code = toTencentCode(symbol);
+      
+      try {
+        const url = `https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${code},${period},,,${num},qfq`;
+        const resp = await fetchWithRetry(url);
+        const text = await resp.text();
+        
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          const match = text.match(/^[^(]*\((.*)\)[^)]*$/s);
+          if (match) {
+            data = JSON.parse(match[1]);
+          } else {
+            throw new Error('Failed to parse response');
+          }
+        }
 
-    const url = `${KLINE_API}?${params.toString()}`;
-    const resp = await fetch(url);
-    const data = await resp.json();
 
-    if (data.data?.klines && data.data.klines.length > 0) {
-      const klines = parseKlines(data.data.klines);
-      console.log(`✓ ${symbol} (${secid}): ${klines.length} ${kline_type} bars`);
-      return new Response(JSON.stringify({ symbol, klines }), {
+        const klines = period === 'week' 
+          ? parseWeeklyKlines(data, code) 
+          : parseTencentKlines(data, code);
+        
+        results[symbol] = klines;
+        console.log(`✓ ${symbol} (${code}): ${klines.length} ${kline_type} bars`);
+      } catch (err) {
+        console.error(`✗ ${symbol}: ${err}`);
+        results[symbol] = [];
+      }
+
+      if (i < symbols.length - 1) {
+        await new Promise(r => setTimeout(r, 50));
+      }
+    }
+
+    if (body.symbols) {
+      return new Response(JSON.stringify({ results }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     } else {
-      console.error(`No data for ${symbol} (${secid}):`, JSON.stringify(data).slice(0, 200));
-      return new Response(JSON.stringify({ symbol, klines: [], error: 'No data' }), {
+      const symbol = symbols[0];
+      return new Response(JSON.stringify({ symbol, klines: results[symbol] || [] }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

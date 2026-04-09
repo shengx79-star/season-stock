@@ -21,7 +21,6 @@ function toCandle(k: EastMoneyKline): Candle {
   };
 }
 
-// In-memory cache with TTL
 interface CacheEntry {
   dailyBars: Candle[];
   weeklyBars: Candle[];
@@ -29,8 +28,30 @@ interface CacheEntry {
 }
 
 const cache = new Map<string, CacheEntry>();
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const CACHE_TTL = 10 * 60 * 1000;
 
+/** Batch fetch via edge function (sequential on server side to avoid TLS errors) */
+async function fetchBatch(symbols: string[], kline_type: string, num: number): Promise<Map<string, Candle[]>> {
+  const map = new Map<string, Candle[]>();
+  if (symbols.length === 0) return map;
+
+  const { data, error } = await supabase.functions.invoke('fetch-kline', {
+    body: { symbols, kline_type, num },
+  });
+
+  if (error) {
+    console.error(`Batch fetch error (${kline_type}):`, error);
+    return map;
+  }
+
+  const results = data?.results || {};
+  for (const [sym, klines] of Object.entries(results)) {
+    map.set(sym, (klines as EastMoneyKline[]).map(toCandle));
+  }
+  return map;
+}
+
+/** Single stock fetch (uses batch endpoint with 1 symbol) */
 async function fetchKline(symbol: string, kline_type: string, num: number): Promise<Candle[]> {
   const { data, error } = await supabase.functions.invoke('fetch-kline', {
     body: { symbol, kline_type, num },
@@ -45,25 +66,20 @@ async function fetchKline(symbol: string, kline_type: string, num: number): Prom
   return klines.map(toCandle);
 }
 
-/**
- * Fetch daily + weekly kline for a single stock
- */
 export async function fetchSingleKline(
   symbol: string
 ): Promise<{ dailyBars: Candle[]; weeklyBars: Candle[] }> {
-  // Check cache
   const cached = cache.get(symbol);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL) {
     return { dailyBars: cached.dailyBars, weeklyBars: cached.weeklyBars };
   }
 
-  // Fetch daily and weekly in parallel (East Money has no rate limit issues)
+  // Single stock: 2 sequential calls is fine
   const [dailyBars, weeklyBars] = await Promise.all([
     fetchKline(symbol, 'daily', 120),
     fetchKline(symbol, 'weekly', 35),
   ]);
 
-  // Cache
   if (dailyBars.length > 0) {
     cache.set(symbol, { dailyBars, weeklyBars, fetchedAt: Date.now() });
   }
@@ -72,7 +88,8 @@ export async function fetchSingleKline(
 }
 
 /**
- * Batch fetch for multiple stocks (parallel)
+ * Batch fetch for multiple stocks
+ * Uses batch endpoint to avoid parallel TLS connection issues
  */
 export async function fetchKlineData(
   symbols: string[]
@@ -80,7 +97,6 @@ export async function fetchKlineData(
   const result = new Map<string, { dailyBars: Candle[]; weeklyBars: Candle[] }>();
   const now = Date.now();
 
-  // Check cache first
   const uncached: string[] = [];
   for (const sym of symbols) {
     const cached = cache.get(sym);
@@ -93,17 +109,15 @@ export async function fetchKlineData(
 
   if (uncached.length === 0) return result;
 
-  // Fetch all uncached in parallel (East Money is free, no rate limit)
-  const promises = uncached.map(async (sym) => {
-    const [dailyBars, weeklyBars] = await Promise.all([
-      fetchKline(sym, 'daily', 120),
-      fetchKline(sym, 'weekly', 35),
-    ]);
-    return { sym, dailyBars, weeklyBars };
-  });
+  // Fetch daily and weekly batches sequentially (each batch is sequential on server)
+  const [dailyMap, weeklyMap] = await Promise.all([
+    fetchBatch(uncached, 'daily', 120),
+    fetchBatch(uncached, 'weekly', 35),
+  ]);
 
-  const results = await Promise.all(promises);
-  for (const { sym, dailyBars, weeklyBars } of results) {
+  for (const sym of uncached) {
+    const dailyBars = dailyMap.get(sym) || [];
+    const weeklyBars = weeklyMap.get(sym) || [];
     if (dailyBars.length > 0) {
       cache.set(sym, { dailyBars, weeklyBars, fetchedAt: now });
     }
