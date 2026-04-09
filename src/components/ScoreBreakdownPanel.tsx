@@ -37,7 +37,7 @@ const CATEGORY_EXPLANATIONS: Record<string, { title: string; desc: string; detai
     ],
   },
   EXT: {
-    title: "拓展评分",
+    title: "扩展评分",
     desc: "通过布林带、BIAS和日内涨跌幅捕捉极端状态",
     details: [
       "%B > 0.5 → summer +1",
@@ -69,8 +69,8 @@ function CategoryLabel({ category }: { category: string }) {
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="w-[72px] text-muted-foreground font-medium shrink-0 cursor-help flex items-center gap-0.5">
-            {info.title}
+          <span className="w-16 text-muted-foreground font-medium shrink-0 cursor-help flex items-center gap-0.5">
+            {category}
             <Info className="w-3 h-3 text-muted-foreground/50" />
           </span>
         </TooltipTrigger>
@@ -88,46 +88,25 @@ function CategoryLabel({ category }: { category: string }) {
   );
 }
 
-const CATEGORY_PREFIX_MAP: Record<string, string> = {
-  TREND: "趋势:",
-  TURN: "转折:",
-  EXT: "扩展:",
-  WEEKLY: "周线:",
-};
-
-function ScoreRow({ label, scores, cap, notes }: { label: string; scores: StageScores; cap: number; notes: string[] }) {
-  const prefix = CATEGORY_PREFIX_MAP[label] || "";
-  const relevantNotes = notes.filter(n => n.startsWith(prefix));
-
+function ScoreRow({ label, scores, cap }: { label: string; scores: StageScores; cap: number }) {
   return (
-    <div className="space-y-0.5">
-      <div className="flex items-center gap-2 text-xs">
-        <CategoryLabel category={label} />
-        <div className="flex-1 grid grid-cols-4 gap-1">
-          {STAGES.map((s) => (
-            <div key={s} className="text-center">
-              <div className={`rounded px-1.5 py-0.5 font-mono ${scores[s] > 0 ? `bg-${s}-light text-${s}-foreground` : "text-muted-foreground/50"}`}>
-                {scores[s]}/{cap}
-              </div>
+    <div className="flex items-center gap-2 text-xs">
+      <CategoryLabel category={label} />
+      <div className="flex-1 grid grid-cols-4 gap-1">
+        {STAGES.map((s) => (
+          <div key={s} className="text-center">
+            <div className={`rounded px-1.5 py-0.5 font-mono ${scores[s] > 0 ? `bg-${s}-light text-${s}-foreground` : "text-muted-foreground/50"}`}>
+              {scores[s]}/{cap}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
-      {relevantNotes.length > 0 && (
-        <div className="ml-20 space-y-0">
-          {relevantNotes.map((note, i) => (
-            <div key={i} className="text-[10px] text-muted-foreground/70 leading-tight">
-              • {note.replace(prefix + " ", "")}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
 export const ScoreBreakdownPanel = ({ result }: ScoreBreakdownPanelProps) => {
-  const { scores, scoreBreakdown, turnSignals, confidence, confidenceLevel, seasonScore, notes } = result;
+  const { scores, scoreBreakdown, turnSignals, confidence, confidenceLevel, seasonScore } = result;
 
   return (
     <div className="space-y-4">
@@ -171,15 +150,15 @@ export const ScoreBreakdownPanel = ({ result }: ScoreBreakdownPanelProps) => {
       <div>
         <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">评分明细</h4>
         <div className="space-y-1.5">
-          <div className="grid grid-cols-4 gap-1 text-center mb-1 ml-20">
+          <div className="grid grid-cols-4 gap-1 text-center mb-1 ml-[72px]">
             {STAGES.map((s) => (
               <span key={s} className="text-xs text-muted-foreground">{seasonEmojis[s]}</span>
             ))}
           </div>
-          <ScoreRow label="TREND" scores={scoreBreakdown.trend} cap={6} notes={notes} />
-          <ScoreRow label="TURN" scores={scoreBreakdown.turn} cap={6} notes={notes} />
-          <ScoreRow label="EXT" scores={scoreBreakdown.extension} cap={3} notes={notes} />
-          <ScoreRow label="WEEKLY" scores={scoreBreakdown.weekly} cap={3} notes={notes} />
+          <ScoreRow label="TREND" scores={scoreBreakdown.trend} cap={6} />
+          <ScoreRow label="TURN" scores={scoreBreakdown.turn} cap={6} />
+          <ScoreRow label="EXT" scores={scoreBreakdown.extension} cap={3} />
+          <ScoreRow label="WEEKLY" scores={scoreBreakdown.weekly} cap={3} />
         </div>
       </div>
 
