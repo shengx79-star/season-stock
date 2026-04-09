@@ -10,7 +10,7 @@ interface ScoreBreakdownPanelProps {
 const STAGES: PureStage[] = ["winter", "spring", "summer", "autumn"];
 
 const CATEGORY_EXPLANATIONS: Record<string, { title: string; desc: string; details: string[] }> = {
-  TREND: {
+  "趋势评分": {
     title: "趋势评分",
     desc: "基于均线排列和MACD方向判断当前趋势强度",
     details: [
@@ -22,7 +22,7 @@ const CATEGORY_EXPLANATIONS: Record<string, { title: string; desc: string; detai
       "MACD柱为负 → winter +1",
     ],
   },
-  TURN: {
+  "转折评分": {
     title: "转折评分",
     desc: "检测金叉/死叉等转折信号，判断趋势拐点",
     details: [
@@ -36,8 +36,8 @@ const CATEGORY_EXPLANATIONS: Record<string, { title: string; desc: string; detai
       "KDJ J<20 → spring +1, J>80 → autumn +1",
     ],
   },
-  EXT: {
-    title: "扩展评分",
+  "拓展评分": {
+    title: "拓展评分",
     desc: "通过布林带、BIAS和日内涨跌幅捕捉极端状态",
     details: [
       "%B > 0.5 → summer +1",
@@ -49,7 +49,7 @@ const CATEGORY_EXPLANATIONS: Record<string, { title: string; desc: string; detai
       "日跌幅 ≤ -1% → winter +1",
     ],
   },
-  WEEKLY: {
+  "周线评分\n": {
     title: "周线评分",
     desc: "周线级别趋势确认，过滤日线噪音",
     details: [
@@ -63,13 +63,13 @@ const CATEGORY_EXPLANATIONS: Record<string, { title: string; desc: string; detai
 
 function CategoryLabel({ category }: { category: string }) {
   const info = CATEGORY_EXPLANATIONS[category];
-  if (!info) return <span className="w-16 text-muted-foreground font-medium shrink-0">{category}</span>;
+  if (!info) return <span className="w-20 text-muted-foreground font-medium shrink-0 whitespace-pre-wrap">{category}</span>;
 
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="w-16 text-muted-foreground font-medium shrink-0 cursor-help flex items-center gap-0.5">
+          <span className="w-20 text-muted-foreground font-medium shrink-0 cursor-help flex items-center gap-0.5 whitespace-pre-wrap">
             {category}
             <Info className="w-3 h-3 text-muted-foreground/50" />
           </span>
@@ -150,15 +150,15 @@ export const ScoreBreakdownPanel = ({ result }: ScoreBreakdownPanelProps) => {
       <div>
         <h4 className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">评分明细</h4>
         <div className="space-y-1.5">
-          <div className="grid grid-cols-4 gap-1 text-center mb-1 ml-[72px]">
+          <div className="grid grid-cols-4 gap-1 text-center mb-1 ml-[88px]">
             {STAGES.map((s) => (
               <span key={s} className="text-xs text-muted-foreground">{seasonEmojis[s]}</span>
             ))}
           </div>
-          <ScoreRow label="TREND" scores={scoreBreakdown.trend} cap={6} />
-          <ScoreRow label="TURN" scores={scoreBreakdown.turn} cap={6} />
-          <ScoreRow label="EXT" scores={scoreBreakdown.extension} cap={3} />
-          <ScoreRow label="WEEKLY" scores={scoreBreakdown.weekly} cap={3} />
+          <ScoreRow label="趋势评分" scores={scoreBreakdown.trend} cap={6} />
+          <ScoreRow label="转折评分" scores={scoreBreakdown.turn} cap={6} />
+          <ScoreRow label="拓展评分" scores={scoreBreakdown.extension} cap={3} />
+          <ScoreRow label="周线评分\n" scores={scoreBreakdown.weekly} cap={3} />
         </div>
       </div>
 
