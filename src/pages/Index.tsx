@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Search, X, Plus, Loader2 } from "lucide-react";
 import { GoogleLogo } from "@/components/GoogleLogo";
 import { SeasonOverview } from "@/components/SeasonOverview";
@@ -7,8 +7,7 @@ import { StockAnalysis } from "@/components/StockAnalysis";
 import { Stock, Season, seasonLabels, seasonEmojis } from "@/lib/stockData";
 import { useStockClassifications, useStockClassification } from "@/hooks/useStockClassification";
 import { useStockPool } from "@/hooks/useStockPool";
-import { lookupStock } from "@/lib/stockLookup";
-import { toast as sonnerToast } from "sonner";
+import { lookupStock, searchStockByName, StockSuggestion } from "@/lib/stockLookup";
 import { toast } from "sonner";
 
 const seasonFilters: (Season | "all")[] = ["all", "spring", "summer", "autumn", "winter"];
@@ -19,14 +18,17 @@ const Index = () => {
   const [selectedStock, setSelectedStock] = useState<Stock | null>(null);
   const [activeFilter, setActiveFilter] = useState<Season | "all">("all");
   const [lookingUp, setLookingUp] = useState(false);
+  const [suggestions, setSuggestions] = useState<StockSuggestion[]>([]);
+  const [searchingRemote, setSearchingRemote] = useState(false);
+  const [addingSymbol, setAddingSymbol] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { stocks: stockPool, addStock, removeStock } = useStockPool();
 
   const handleDeleteStock = async (symbol: string) => {
     const ok = await removeStock(symbol);
-    if (ok) sonnerToast.success(`已从股票池移除 ${symbol}`);
-    else sonnerToast.error("删除失败");
+    if (ok) toast.success(`已从股票池移除 ${symbol}`);
+    else toast.error("删除失败");
   };
 
   // Search within the pool
@@ -54,6 +56,39 @@ const Index = () => {
   // Check if query looks like a stock code (digits only)
   const isStockCode = /^\d{5,6}$/.test(query.trim());
   const codeNotInPool = isStockCode && !stockPool.some((s) => s.symbol === query.trim());
+  const isTextQuery = query.trim().length >= 2 && !isStockCode;
+
+  // Auto-search remote when local results empty and query is text
+  useEffect(() => {
+    if (!isTextQuery || filteredResults.length > 0) {
+      setSuggestions([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setSearchingRemote(true);
+      try {
+        const results = await searchStockByName(query.trim());
+        setSuggestions(results);
+      } catch { setSuggestions([]); }
+      finally { setSearchingRemote(false); }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [query, isTextQuery, filteredResults.length]);
+
+  const handleAddSuggestion = async (s: StockSuggestion) => {
+    setAddingSymbol(s.symbol);
+    try {
+      const stock = await lookupStock(s.symbol);
+      if (!stock) { toast.error(`未找到 ${s.name}`); return; }
+      const ok = await addStock(stock);
+      if (ok) {
+        toast.success(`已添加 ${stock.name}(${stock.symbol})`);
+        setQuery("");
+        setHasSearched(true);
+      }
+    } catch { toast.error("添加失败"); }
+    finally { setAddingSymbol(null); }
+  };
 
   const handleLookupAndAdd = async () => {
     const symbol = query.trim();
@@ -193,8 +228,39 @@ const Index = () => {
               </div>
             )}
             {filteredResults.length === 0 && !codeNotInPool && (
-              <div className="text-center py-16">
-                <p className="text-muted-foreground">没有找到匹配的股票</p>
+              <div className="text-center py-12">
+                {searchingRemote ? (
+                  <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>正在搜索外部数据源...</span>
+                  </div>
+                ) : suggestions.length > 0 ? (
+                  <div>
+                    <p className="text-muted-foreground mb-4">股票池中未找到，以下是外部搜索结果：</p>
+                    <div className="max-w-md mx-auto space-y-2">
+                      {suggestions.map((s) => (
+                        <button
+                          key={s.symbol}
+                          onClick={() => handleAddSuggestion(s)}
+                          disabled={addingSymbol === s.symbol}
+                          className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors disabled:opacity-50"
+                        >
+                          <div className="text-left">
+                            <span className="text-sm font-medium text-foreground">{s.name}</span>
+                            <span className="text-xs text-muted-foreground ml-2">{s.symbol}</span>
+                          </div>
+                          {addingSymbol === s.symbol ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                          ) : (
+                            <Plus className="w-4 h-4 text-muted-foreground" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">没有找到匹配的股票</p>
+                )}
               </div>
             )}
           </div>
