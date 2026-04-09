@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Search, X, Plus, Loader2 } from "lucide-react";
 import { GoogleLogo } from "@/components/GoogleLogo";
 import { SeasonOverview } from "@/components/SeasonOverview";
@@ -7,8 +7,7 @@ import { StockAnalysis } from "@/components/StockAnalysis";
 import { Stock, Season, seasonLabels, seasonEmojis } from "@/lib/stockData";
 import { useStockClassifications, useStockClassification } from "@/hooks/useStockClassification";
 import { useStockPool } from "@/hooks/useStockPool";
-import { lookupStock } from "@/lib/stockLookup";
-import { toast as sonnerToast } from "sonner";
+import { lookupStock, searchStockByName, StockSuggestion } from "@/lib/stockLookup";
 import { toast } from "sonner";
 
 const seasonFilters: (Season | "all")[] = ["all", "spring", "summer", "autumn", "winter"];
