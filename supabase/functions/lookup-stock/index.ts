@@ -69,37 +69,21 @@ async function fetchQuote(symbol: string) {
 }
 
 async function searchByName(keyword: string) {
-  // Use Tencent smartbox suggest API
-  const url = `https://smartbox.gtimg.cn/s3/?v=2&q=${encodeURIComponent(keyword)}&t=all`;
-  console.log("Search URL:", url);
+  const url = `https://searchapi.eastmoney.com/api/suggest/get?input=${encodeURIComponent(keyword)}&type=14&token=D43BF722C8E33BDC906FB84D85E326E8&count=8`;
   const resp = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      'Referer': 'https://finance.qq.com/',
-    },
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
   });
-  const text = await resp.text();
-  console.log("Search response:", text);
-  // Format: v_hint="sz~000001~平安银行~GP~...^sh~600519~贵州茅台~GP~..."
-  const match = text.match(/"([^"]*)"/);
-  if (!match || !match[1]) return [];
+  const json = await resp.json();
+  const data = json?.QuotationCodeTable?.Data;
+  if (!Array.isArray(data)) return [];
 
-  const items = match[1].split('^').filter(Boolean);
-  const results: Array<{ market: string; symbol: string; name: string; type: string }> = [];
-
-  for (const item of items) {
-    const parts = item.split('~');
-    if (parts.length < 4) continue;
-    const mkt = parts[0]; // sh, sz, hk
-    const code = parts[1];
-    const name = parts[2];
-    const type = parts[3]; // GP=股票, GP-A, ZS=指数, JJ=基金, etc.
-    // Only include stocks (GP or GP-A/GP-B)
-    if (!type.toUpperCase().startsWith('GP')) continue;
-    results.push({ market: mkt, symbol: code, name });
-  }
-
-  return results.slice(0, 8); // max 8 suggestions
+  return data
+    .filter((item: any) => item.Classify === 'AStock' || item.Classify === 'HKStock')
+    .map((item: any) => ({
+      market: item.Classify === 'HKStock' ? 'hk' : (item.JYS === '2' ? 'sh' : 'sz'),
+      symbol: item.Code,
+      name: item.Name,
+    }));
 }
 
 Deno.serve(async (req) => {
