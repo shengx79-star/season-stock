@@ -280,7 +280,7 @@ const Index = () => {
             <input
               ref={inputRef}
               value={query}
-              onChange={(e) => { setQuery(e.target.value); if (e.target.value.trim()) setHasSearched(true); }}
+              onChange={(e) => { setQuery(e.target.value); if (e.target.value.trim().length >= 2) setHasSearched(true); }}
               className="search-input pl-14 pr-12"
               placeholder="输入股票代码添加，或搜索名称..."
               autoFocus
