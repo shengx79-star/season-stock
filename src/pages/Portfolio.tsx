@@ -5,6 +5,7 @@ import { useStockClassifications } from "@/hooks/useStockClassification";
 import {
   computePortfolio,
   computeATR20,
+  computeMarketContext,
   regimeLabels,
   type PositionInput,
   type StockPositionResult,
@@ -44,7 +45,9 @@ const actionBorderColors: Record<ActionType, string> = {
 const Portfolio = () => {
   const { stocks: stockPool, togglePortfolio } = useStockPool();
   const { config, positions, loading: portfolioLoading, updateConfig, upsertPosition, removePosition } = usePortfolio();
-  const { results: classifications, dailyBarsMap } = useStockClassifications(stockPool.filter(s => s.inPortfolio));
+  const portfolioStocks = useMemo(() => stockPool.filter(s => s.inPortfolio), [stockPool]);
+  const { results: allClassifications } = useStockClassifications(stockPool);
+  const { results: classifications, dailyBarsMap } = useStockClassifications(portfolioStocks);
 
   const [showConfig, setShowConfig] = useState(false);
   const [editTotalAssets, setEditTotalAssets] = useState("");
@@ -52,8 +55,6 @@ const Portfolio = () => {
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [editingPosition, setEditingPosition] = useState(false);
   const [posForm, setPosForm] = useState({ positionValue: "", costBasis: "", shares: "", quotaValue: "" });
-
-  const portfolioStocks = useMemo(() => stockPool.filter(s => s.inPortfolio), [stockPool]);
 
   const positionInputs: PositionInput[] = useMemo(() => {
     return portfolioStocks.map((stock) => {
@@ -74,8 +75,13 @@ const Portfolio = () => {
 
   const portfolio = useMemo(() => {
     if (!config || portfolioStocks.length === 0) return null;
-    return computePortfolio(config.totalAssets, config.defaultQuotaPct, positionInputs, classifications);
-  }, [config, positionInputs, classifications, portfolioStocks.length]);
+    const result = computePortfolio(config.totalAssets, config.defaultQuotaPct, positionInputs, classifications);
+    // Use all stocks for market context instead of only portfolio stocks
+    if (allClassifications.size > 0) {
+      result.market = computeMarketContext(allClassifications);
+    }
+    return result;
+  }, [config, positionInputs, classifications, allClassifications, portfolioStocks.length]);
 
   // Auto-select first stock
   useEffect(() => {
