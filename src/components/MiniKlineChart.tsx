@@ -39,6 +39,9 @@ const UP_COLOR = "#22c55e";
 const DOWN_COLOR = "#ef4444";
 const UP_COLOR_LIGHT = "rgba(34,197,94,0.35)";
 const DOWN_COLOR_LIGHT = "rgba(239,68,68,0.35)";
+const MA5_COLOR = "#f59e0b";   // amber
+const MA14_COLOR = "#3b82f6";  // blue
+const MA20_COLOR = "#a855f7";  // purple
 
 // Custom candlestick shape
 const CandlestickShape = (props: any) => {
