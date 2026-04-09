@@ -131,6 +131,7 @@ const Index = () => {
 
   const handleClear = () => {
     setQuery("");
+    setCommittedQuery("");
     setHasSearched(false);
     setSelectedStock(null);
     setActiveFilter("all");
