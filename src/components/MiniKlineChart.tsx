@@ -211,6 +211,13 @@ export const KlineChart = ({
                       <span className="text-muted-foreground">低</span><span className="text-foreground font-mono">{d.low.toFixed(2)}</span>
                       <span className="text-muted-foreground">量</span><span className="text-foreground font-mono">{(d.volume / 10000).toFixed(0)}万</span>
                     </div>
+                    {(d.ma5 || d.ma14 || d.ma20) && (
+                      <div className="mt-1 pt-1 border-t border-border flex gap-3">
+                        {d.ma5 != null && <span style={{ color: MA5_COLOR }}>MA5: {d.ma5.toFixed(2)}</span>}
+                        {d.ma14 != null && <span style={{ color: MA14_COLOR }}>MA14: {d.ma14.toFixed(2)}</span>}
+                        {d.ma20 != null && <span style={{ color: MA20_COLOR }}>MA20: {d.ma20.toFixed(2)}</span>}
+                      </div>
+                    )}
                   </div>
                 );
               }}
@@ -218,6 +225,9 @@ export const KlineChart = ({
             <Bar dataKey="body" shape={<CandlestickShape />} isAnimationActive={false}>
               {data.map((_, i) => <Cell key={i} />)}
             </Bar>
+            <Line type="monotone" dataKey="ma5" stroke={MA5_COLOR} strokeWidth={1} dot={false} isAnimationActive={false} connectNulls />
+            <Line type="monotone" dataKey="ma14" stroke={MA14_COLOR} strokeWidth={1} dot={false} isAnimationActive={false} connectNulls />
+            <Line type="monotone" dataKey="ma20" stroke={MA20_COLOR} strokeWidth={1} dot={false} isAnimationActive={false} connectNulls />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
