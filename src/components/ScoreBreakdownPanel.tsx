@@ -176,10 +176,10 @@ export const ScoreBreakdownPanel = ({ result }: ScoreBreakdownPanelProps) => {
               <span key={s} className="text-xs text-muted-foreground">{seasonEmojis[s]}</span>
             ))}
           </div>
-          <ScoreRow label="TREND" scores={scoreBreakdown.trend} cap={6} />
-          <ScoreRow label="TURN" scores={scoreBreakdown.turn} cap={6} />
-          <ScoreRow label="EXT" scores={scoreBreakdown.extension} cap={3} />
-          <ScoreRow label="WEEKLY" scores={scoreBreakdown.weekly} cap={3} />
+          <ScoreRow label="TREND" scores={scoreBreakdown.trend} cap={6} notes={notes} />
+          <ScoreRow label="TURN" scores={scoreBreakdown.turn} cap={6} notes={notes} />
+          <ScoreRow label="EXT" scores={scoreBreakdown.extension} cap={3} notes={notes} />
+          <ScoreRow label="WEEKLY" scores={scoreBreakdown.weekly} cap={3} notes={notes} />
         </div>
       </div>
 
