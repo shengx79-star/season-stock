@@ -5,6 +5,7 @@ import { useStockClassifications } from "@/hooks/useStockClassification";
 import {
   computePortfolio,
   computeATR20,
+  computeMarketContext,
   regimeLabels,
   type PositionInput,
   type StockPositionResult,
