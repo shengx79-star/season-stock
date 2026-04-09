@@ -458,7 +458,7 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
                   className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm" placeholder="留空用默认" />
               </div>
             </div>
-            <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
               <button onClick={onSave} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">保存</button>
               <button onClick={onCancel} className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm">取消</button>
             </div>
