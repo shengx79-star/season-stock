@@ -24,7 +24,9 @@ async function fetchQuote(symbol: string) {
       'Referer': 'https://finance.qq.com/',
     },
   });
-  const text = await resp.text();
+  // qt.gtimg.cn returns GBK-encoded text, decode properly
+  const buf = await resp.arrayBuffer();
+  const text = new TextDecoder('gbk').decode(buf);
   const match = text.match(/"([^"]*)"/);
   if (!match || !match[1] || match[1].length < 10) return null;
 
