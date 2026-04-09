@@ -175,6 +175,7 @@ const Index = () => {
                   classification={classifications.get(stock.symbol)}
                   dailyBars={dailyBarsMap.get(stock.symbol)}
                   onClick={handleStockClick}
+                  onDelete={handleDeleteStock}
                 />
               ))}
             </div>
