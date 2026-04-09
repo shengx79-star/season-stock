@@ -201,20 +201,35 @@ export const MiniKlineChart = ({
   );
 };
 
-/** Detail page: candlestick + volume */
+// MACD bar shape
+const MacdBarShape = (props: any) => {
+  const { x, y, width, height, payload } = props;
+  if (!payload || payload.macdBar == null) return null;
+  const color = payload.macdBar >= 0 ? MACD_UP : MACD_DOWN;
+  return (
+    <rect x={x} y={y} width={width} height={Math.abs(height)} fill={color} rx={0.5} />
+  );
+};
+
+/** Detail page: candlestick + volume + MACD */
 export const KlineChart = ({
   dailyBars,
   season,
   bars = 90,
-  height = 280,
+  height = 340,
   className = "",
 }: MiniKlineChartProps) => {
   const { data, domain, maxVol } = useMemo(() => prepareData(dailyBars, bars, 0.005, true), [dailyBars, bars]);
 
   if (data.length < 2) return null;
 
-  const candleHeight = Math.round(height * 0.72);
-  const volumeHeight = Math.round(height * 0.28);
+  const candleHeight = Math.round(height * 0.58);
+  const volumeHeight = Math.round(height * 0.20);
+  const macdHeight = Math.round(height * 0.22);
+
+  // MACD domain
+  const macdVals = data.filter(d => d.macdDIF != null).flatMap(d => [d.macdDIF!, d.macdDEA!, d.macdBar!]);
+  const macdMax = macdVals.length > 0 ? Math.max(...macdVals.map(Math.abs)) * 1.1 : 1;
 
   return (
     <div className={className}>
@@ -245,6 +260,13 @@ export const KlineChart = ({
                         {d.ma20 != null && <span style={{ color: MA20_COLOR }}>MA20: {d.ma20.toFixed(2)}</span>}
                       </div>
                     )}
+                    {d.macdDIF != null && (
+                      <div className="mt-1 pt-1 border-t border-border flex gap-3">
+                        <span style={{ color: DIF_COLOR }}>DIF: {d.macdDIF.toFixed(3)}</span>
+                        <span style={{ color: DEA_COLOR }}>DEA: {d.macdDEA!.toFixed(3)}</span>
+                        <span style={{ color: d.macdBar! >= 0 ? UP_COLOR : DOWN_COLOR }}>MACD: {d.macdBar!.toFixed(3)}</span>
+                      </div>
+                    )}
                   </div>
                 );
               }}
@@ -268,6 +290,21 @@ export const KlineChart = ({
             <Bar dataKey="volume" shape={<VolumeBarShape />} isAnimationActive={false}>
               {data.map((_, i) => <Cell key={i} />)}
             </Bar>
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* MACD chart */}
+      <div style={{ height: macdHeight }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={data} margin={{ top: 0, right: 4, bottom: 0, left: 4 }} barGap={0} barCategoryGap="15%">
+            <YAxis domain={[-macdMax, macdMax]} hide />
+            <XAxis dataKey="date" hide />
+            <Bar dataKey="macdBar" shape={<MacdBarShape />} isAnimationActive={false}>
+              {data.map((_, i) => <Cell key={i} />)}
+            </Bar>
+            <Line type="monotone" dataKey="macdDIF" stroke={DIF_COLOR} strokeWidth={1} dot={false} isAnimationActive={false} connectNulls />
+            <Line type="monotone" dataKey="macdDEA" stroke={DEA_COLOR} strokeWidth={1} dot={false} isAnimationActive={false} connectNulls />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
