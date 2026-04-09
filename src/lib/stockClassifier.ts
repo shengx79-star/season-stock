@@ -1,5 +1,9 @@
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 
+// =============================================
+// V2 四季分类引擎 — 完全按 V2 技术规格文档实现
+// =============================================
+
 export type PureStage = "winter" | "spring" | "summer" | "autumn";
 export type Stage = PureStage | "unknown";
 export type ConfidenceLevel = "low" | "medium" | "high";
@@ -30,6 +34,8 @@ export interface ScoreBreakdown {
 export interface TurnSignals {
   ma514Golden: boolean;
   ma514Dead: boolean;
+  ma520Golden: boolean;
+  ma520Dead: boolean;
   macdGolden: boolean;
   macdDead: boolean;
   priceReclaimMA20: boolean;
@@ -49,6 +55,7 @@ export interface IndicatorSnapshot {
   ma14: number | null;
   ma20: number | null;
   ma60: number | null;
+  maAlignmentScore: number; // 0-3
   rsi14: number | null;
   bias20: number | null;
   bias60: number | null;
@@ -64,8 +71,8 @@ export interface IndicatorSnapshot {
   percentB: number | null;
   ma20Slope5: number | null;
   volumeRatio5: number | null;
-  upStreak: number;
-  downStreak: number;
+  consecutiveUpDays: number;
+  consecutiveDownDays: number;
   dayReturnPct: number | null;
   upperShadowPct: number | null;
   lowerShadowPct: number | null;
@@ -98,6 +105,7 @@ export interface ClassificationResult {
   finalStage: Stage;
   confidence: number;
   confidenceLevel: ConfidenceLevel;
+  seasonScore: number; // 0-100 温度值
   scores: StageScores;
   scoreBreakdown: ScoreBreakdown;
   turnSignals: TurnSignals;
@@ -128,7 +136,9 @@ export interface PersistenceUpdateResult {
   reason: string;
 }
 
-const STAGES: PureStage[] = ["winter", "spring", "summer", "autumn"];
+// =============================================
+// 工具函数
+// =============================================
 
 function emptyScores(): StageScores {
   return { winter: 0, spring: 0, summer: 0, autumn: 0 };
@@ -138,9 +148,8 @@ function cloneScores(s: StageScores): StageScores {
   return { ...s };
 }
 
-function round(num: number, digits = 4): number {
-  const factor = 10 ** digits;
-  return Math.round(num * factor) / factor;
+function round2(num: number): number {
+  return Math.round(num * 100) / 100;
 }
 
 function isNum(v: number | null | undefined): v is number {
@@ -149,13 +158,6 @@ function isNum(v: number | null | undefined): v is number {
 
 function last<T>(arr: T[]): T | undefined {
   return arr[arr.length - 1];
-}
-
-function safeDiv(numerator: number, denominator: number): number | null {
-  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) {
-    return null;
-  }
-  return numerator / denominator;
 }
 
 function addScore(bucket: StageScores, stage: PureStage, points: number): void {
@@ -182,21 +184,20 @@ function sumScores(...buckets: StageScores[]): StageScores {
   return out;
 }
 
-function topNStages(scores: Partial<Record<PureStage, number>>, n = 2): [PureStage, number][] {
+function topNStages(scores: Record<PureStage, number>, n = 2): [PureStage, number][] {
   return (Object.entries(scores) as [PureStage, number][])
     .filter(([, v]) => Number.isFinite(v))
     .sort((a, b) => b[1] - a[1])
     .slice(0, n);
 }
 
-// -----------------------------
-// 基础指标
-// -----------------------------
+// =============================================
+// 基础指标计算
+// =============================================
 
 function sma(values: number[], period: number): Array<number | null> {
   const out: Array<number | null> = Array(values.length).fill(null);
   if (period <= 0) return out;
-
   let sum = 0;
   for (let i = 0; i < values.length; i++) {
     sum += values[i];
@@ -209,11 +210,9 @@ function sma(values: number[], period: number): Array<number | null> {
 function ema(values: number[], period: number): Array<number | null> {
   const out: Array<number | null> = Array(values.length).fill(null);
   if (values.length === 0 || period <= 0) return out;
-
   const k = 2 / (period + 1);
   let prev = values[0];
   out[0] = prev;
-
   for (let i = 1; i < values.length; i++) {
     prev = values[i] * k + prev * (1 - k);
     out[i] = prev;
@@ -224,31 +223,22 @@ function ema(values: number[], period: number): Array<number | null> {
 function rsiWilder(values: number[], period = 14): Array<number | null> {
   const out: Array<number | null> = Array(values.length).fill(null);
   if (values.length < period + 1) return out;
-
   let gainSum = 0;
   let lossSum = 0;
-
   for (let i = 1; i <= period; i++) {
     const diff = values[i] - values[i - 1];
     gainSum += Math.max(diff, 0);
     lossSum += Math.max(-diff, 0);
   }
-
   let avgGain = gainSum / period;
   let avgLoss = lossSum / period;
   out[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
-
   for (let i = period + 1; i < values.length; i++) {
     const diff = values[i] - values[i - 1];
-    const gain = Math.max(diff, 0);
-    const loss = Math.max(-diff, 0);
-
-    avgGain = (avgGain * (period - 1) + gain) / period;
-    avgLoss = (avgLoss * (period - 1) + loss) / period;
-
+    avgGain = (avgGain * (period - 1) + Math.max(diff, 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + Math.max(-diff, 0)) / period;
     out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
   }
-
   return out;
 }
 
@@ -257,26 +247,19 @@ function macd(
   fast = 12,
   slow = 26,
   signal = 9
-): {
-  dif: Array<number | null>;
-  dea: Array<number | null>;
-  hist: Array<number | null>;
-} {
+): { dif: Array<number | null>; dea: Array<number | null>; hist: Array<number | null> } {
   const fastEma = ema(values, fast);
   const slowEma = ema(values, slow);
-
   const dif: Array<number | null> = values.map((_, i) =>
     isNum(fastEma[i]) && isNum(slowEma[i]) ? fastEma[i]! - slowEma[i]! : null
   );
-
   const difValues = dif.map((v) => v ?? 0);
   const deaRaw = ema(difValues, signal);
-
   const dea: Array<number | null> = deaRaw.map((v, i) => (isNum(dif[i]) ? v : null));
+  // V2: histogram = DIF - DEA (not 2×)
   const hist: Array<number | null> = dif.map((v, i) =>
-    isNum(v) && isNum(dea[i]) ? 2 * (v - dea[i]!) : null
+    isNum(v) && isNum(dea[i]) ? v - dea[i]! : null
   );
-
   return { dif, dea, hist };
 }
 
@@ -287,36 +270,27 @@ function kdj(
   const k: Array<number | null> = Array(bars.length).fill(null);
   const d: Array<number | null> = Array(bars.length).fill(null);
   const j: Array<number | null> = Array(bars.length).fill(null);
-
   let prevK = 50;
   let prevD = 50;
-
   for (let i = 0; i < bars.length; i++) {
     if (i < period - 1) continue;
-
     let highest = -Infinity;
     let lowest = Infinity;
-
     for (let p = i - period + 1; p <= i; p++) {
       highest = Math.max(highest, bars[p].high);
       lowest = Math.min(lowest, bars[p].low);
     }
-
     const range = highest - lowest;
     const rsv = range === 0 ? 50 : ((bars[i].close - lowest) / range) * 100;
-
     const currK = (2 / 3) * prevK + (1 / 3) * rsv;
     const currD = (2 / 3) * prevD + (1 / 3) * currK;
     const currJ = 3 * currK - 2 * currD;
-
     k[i] = currK;
     d[i] = currD;
     j[i] = currJ;
-
     prevK = currK;
     prevD = currD;
   }
-
   return { k, d, j };
 }
 
@@ -324,30 +298,21 @@ function bollinger(
   values: number[],
   period = 20,
   stdMultiplier = 2
-): {
-  mid: Array<number | null>;
-  upper: Array<number | null>;
-  lower: Array<number | null>;
-  percentB: Array<number | null>;
-} {
+): { mid: Array<number | null>; upper: Array<number | null>; lower: Array<number | null>; percentB: Array<number | null> } {
   const mid = sma(values, period);
   const upper: Array<number | null> = Array(values.length).fill(null);
   const lower: Array<number | null> = Array(values.length).fill(null);
   const percentB: Array<number | null> = Array(values.length).fill(null);
-
   for (let i = period - 1; i < values.length; i++) {
     const window = values.slice(i - period + 1, i + 1);
     const mean = mid[i]!;
     const variance = window.reduce((acc, v) => acc + (v - mean) ** 2, 0) / period;
     const std = Math.sqrt(variance);
-
     upper[i] = mean + stdMultiplier * std;
     lower[i] = mean - stdMultiplier * std;
-
     const denom = upper[i]! - lower[i]!;
     percentB[i] = denom === 0 ? 50 : ((values[i] - lower[i]!) / denom) * 100;
   }
-
   return { mid, upper, lower, percentB };
 }
 
@@ -369,26 +334,26 @@ function calcSlopePct(series: Array<number | null>, lookback = 5): Array<number 
   return out;
 }
 
+/** V2: volumeRatio5 = volume[latest] / avg(volume[latest-5..latest-1]) */
 function calcVolumeRatio5(bars: Candle[]): Array<number | null> {
   const out: Array<number | null> = Array(bars.length).fill(null);
-  for (let i = 4; i < bars.length; i++) {
-    const avg = bars.slice(i - 4, i + 1).reduce((acc, b) => acc + b.volume, 0) / 5;
+  for (let i = 5; i < bars.length; i++) {
+    const avg = bars.slice(i - 5, i).reduce((acc, b) => acc + b.volume, 0) / 5;
     out[i] = avg === 0 ? null : bars[i].volume / avg;
   }
   return out;
 }
 
-function calcStreaks(close: number[]): { upStreak: number; downStreak: number } {
-  let upStreak = 0;
-  let downStreak = 0;
-
-  for (let i = close.length - 1; i > 0; i--) {
-    if (close[i] > close[i - 1] && downStreak === 0) upStreak++;
-    else if (close[i] < close[i - 1] && upStreak === 0) downStreak++;
+/** V2: 连续涨跌用 close vs open 判断 */
+function calcStreaksV2(bars: Candle[]): { consecutiveUpDays: number; consecutiveDownDays: number } {
+  let up = 0;
+  let down = 0;
+  for (let i = bars.length - 1; i >= 0; i--) {
+    if (bars[i].close > bars[i].open && down === 0) up++;
+    else if (bars[i].close < bars[i].open && up === 0) down++;
     else break;
   }
-
-  return { upStreak, downStreak };
+  return { consecutiveUpDays: up, consecutiveDownDays: down };
 }
 
 function dayReturnPct(bars: Candle[]): number | null {
@@ -402,10 +367,8 @@ function dayReturnPct(bars: Candle[]): number | null {
 function shadowRatios(lastBar: Candle): { upperShadowPct: number | null; lowerShadowPct: number | null } {
   const range = lastBar.high - lastBar.low;
   if (range <= 0) return { upperShadowPct: null, lowerShadowPct: null };
-
   const upperShadow = lastBar.high - Math.max(lastBar.open, lastBar.close);
   const lowerShadow = Math.min(lastBar.open, lastBar.close) - lastBar.low;
-
   return {
     upperShadowPct: (upperShadow / range) * 100,
     lowerShadowPct: (lowerShadow / range) * 100,
@@ -416,15 +379,28 @@ function amplitudePct(bars: Candle[]): number | null {
   const curr = last(bars);
   const prev = bars.length >= 2 ? bars[bars.length - 2] : undefined;
   if (!curr) return null;
-
   const base = prev?.close ?? curr.open;
   if (base === 0) return null;
   return ((curr.high - curr.low) / base) * 100;
 }
 
-// -----------------------------
+/** V2: MA排列评分 0-3 */
+function calcMAAlignmentScore(ma5: number | null, ma10: number | null, ma20: number | null, ma60: number | null): number {
+  if (!isNum(ma5) || !isNum(ma10) || !isNum(ma20) || !isNum(ma60)) return -1; // 不可计算
+
+  // 3 = 多头排列 MA5>MA10>MA20>MA60
+  if (ma5 > ma10 && ma10 > ma20 && ma20 > ma60) return 3;
+  // 0 = 空头排列 MA5<MA10<MA20<MA60
+  if (ma5 < ma10 && ma10 < ma20 && ma20 < ma60) return 0;
+  // 2 = 部分多头 MA5>MA20
+  if (ma5 > ma20) return 2;
+  // 1 = 部分空头 MA5<MA20
+  return 1;
+}
+
+// =============================================
 // 信号检测
-// -----------------------------
+// =============================================
 
 function crossedAboveWithin(
   a: Array<number | null>,
@@ -434,15 +410,9 @@ function crossedAboveWithin(
   const start = Math.max(1, a.length - lookback);
   for (let i = start; i < a.length; i++) {
     if (
-      isNum(a[i - 1]) &&
-      isNum(b[i - 1]) &&
-      isNum(a[i]) &&
-      isNum(b[i]) &&
-      a[i - 1]! <= b[i - 1]! &&
-      a[i]! > b[i]!
-    ) {
-      return true;
-    }
+      isNum(a[i - 1]) && isNum(b[i - 1]) && isNum(a[i]) && isNum(b[i]) &&
+      a[i - 1]! <= b[i - 1]! && a[i]! > b[i]!
+    ) return true;
   }
   return false;
 }
@@ -455,54 +425,16 @@ function crossedBelowWithin(
   const start = Math.max(1, a.length - lookback);
   for (let i = start; i < a.length; i++) {
     if (
-      isNum(a[i - 1]) &&
-      isNum(b[i - 1]) &&
-      isNum(a[i]) &&
-      isNum(b[i]) &&
-      a[i - 1]! >= b[i - 1]! &&
-      a[i]! < b[i]!
-    ) {
-      return true;
-    }
+      isNum(a[i - 1]) && isNum(b[i - 1]) && isNum(a[i]) && isNum(b[i]) &&
+      a[i - 1]! >= b[i - 1]! && a[i]! < b[i]!
+    ) return true;
   }
   return false;
 }
 
-function movedAboveThresholdWithin(
-  series: Array<number | null>,
-  threshold: number,
-  lookback: number
-): boolean {
-  const start = Math.max(1, series.length - lookback);
-  for (let i = start; i < series.length; i++) {
-    if (isNum(series[i - 1]) && isNum(series[i]) && series[i - 1]! < threshold && series[i]! >= threshold) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function movedBelowThresholdWithin(
-  series: Array<number | null>,
-  threshold: number,
-  lookback: number
-): boolean {
-  const start = Math.max(1, series.length - lookback);
-  for (let i = start; i < series.length; i++) {
-    if (isNum(series[i - 1]) && isNum(series[i]) && series[i - 1]! > threshold && series[i]! <= threshold) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function seriesDelta(series: Array<number | null>, lookback: number): number | null {
-  if (series.length <= lookback) return null;
-  const curr = series[series.length - 1];
-  const prev = series[series.length - 1 - lookback];
-  if (!isNum(curr) || !isNum(prev)) return null;
-  return curr - prev;
-}
+// =============================================
+// 指标上下文构建
+// =============================================
 
 function buildIndicatorContext(dailyBars: Candle[], weeklyBars: Candle[]) {
   const close = dailyBars.map((b) => b.close);
@@ -530,117 +462,83 @@ function buildIndicatorContext(dailyBars: Candle[], weeklyBars: Candle[]) {
 
   return {
     close,
-    ma5,
-    ma10,
-    ma14,
-    ma20,
-    ma60,
-    rsi14,
-    bias20,
-    bias60,
-    dif,
-    dea,
-    hist,
-    k,
-    d,
-    j,
-    bollMid: mid,
-    bollUpper: upper,
-    bollLower: lower,
-    percentB,
-    ma20Slope5,
-    volumeRatio5,
-    weekClose,
-    weekMA5,
-    weekMA10,
-    weekDif: weekMacd.dif,
-    weekDea: weekMacd.dea,
-    weekHist: weekMacd.hist,
+    ma5, ma10, ma14, ma20, ma60,
+    rsi14, bias20, bias60,
+    dif, dea, hist,
+    k, d, j,
+    bollMid: mid, bollUpper: upper, bollLower: lower, percentB,
+    ma20Slope5, volumeRatio5,
+    weekClose, weekMA5, weekMA10,
+    weekDif: weekMacd.dif, weekDea: weekMacd.dea, weekHist: weekMacd.hist,
   };
 }
 
+/** V2: turn count 前端版只用 3 项 (MA5/14金死叉 + MACD金死叉 + 价格穿越MA20) lookback=10 */
 function computeTurnSignals(ctx: ReturnType<typeof buildIndicatorContext>): TurnSignals {
-  const ma514Golden = crossedAboveWithin(ctx.ma5, ctx.ma14, 5);
-  const ma514Dead = crossedBelowWithin(ctx.ma5, ctx.ma14, 5);
+  // V2: lookback=10 for MA crosses
+  const ma514Golden = crossedAboveWithin(ctx.ma5, ctx.ma14, 10);
+  const ma514Dead = crossedBelowWithin(ctx.ma5, ctx.ma14, 10);
+  const ma520Golden = crossedAboveWithin(ctx.ma5, ctx.ma20, 10);
+  const ma520Dead = crossedBelowWithin(ctx.ma5, ctx.ma20, 10);
 
+  // V2: MACD lookback=5
   const macdGolden = crossedAboveWithin(ctx.dif, ctx.dea, 5);
   const macdDead = crossedBelowWithin(ctx.dif, ctx.dea, 5);
 
+  // V2: 价格穿越MA20, lookback=5
   const priceReclaimMA20 = crossedAboveWithin(
-    ctx.close.map((v) => v),
-    ctx.ma20,
-    5
+    ctx.close.map((v) => v), ctx.ma20, 5
   );
-
   const priceLoseMA20 = crossedBelowWithin(
-    ctx.close.map((v) => v),
-    ctx.ma20,
-    5
+    ctx.close.map((v) => v), ctx.ma20, 5
   );
 
-  const rsiDelta5 = seriesDelta(ctx.rsi14, 5);
+  // RSI/KDJ signals (used in scoring, NOT in turn count for frontend version)
   const rsi5Ago = ctx.rsi14.length > 5 ? ctx.rsi14[ctx.rsi14.length - 6] : null;
   const rsiNow = last(ctx.rsi14) ?? null;
+  const rsiLowRecovery = isNum(rsi5Ago) && isNum(rsiNow) && rsi5Ago <= 35 && rsiNow > 35;
+  const rsiHighDrop = isNum(rsi5Ago) && isNum(rsiNow) && rsi5Ago >= 65 && rsiNow < 65;
+  const kdjRecover = isNum(last(ctx.j)) && last(ctx.j)! < 20;
+  const kdjFall = isNum(last(ctx.j)) && last(ctx.j)! > 80;
 
-  const rsiLowRecovery =
-    (isNum(rsi5Ago) && isNum(rsiNow) && rsi5Ago < 35 && rsiNow > 35) ||
-    (isNum(rsiDelta5) && rsiDelta5 >= 5);
-
-  const rsiHighDrop =
-    (isNum(rsi5Ago) && isNum(rsiNow) && rsi5Ago > 65 && rsiNow < 65) ||
-    (isNum(rsiDelta5) && rsiDelta5 <= -5);
-
-  const kdjRecover = movedAboveThresholdWithin(ctx.j, 20, 5);
-  const kdjFall = movedBelowThresholdWithin(ctx.j, 80, 5);
-
-  const upTurnCount = [
-    ma514Golden,
-    macdGolden,
-    priceReclaimMA20,
-    rsiLowRecovery,
-    kdjRecover,
-  ].filter(Boolean).length;
-
-  const downTurnCount = [
-    ma514Dead,
-    macdDead,
-    priceLoseMA20,
-    rsiHighDrop,
-    kdjFall,
-  ].filter(Boolean).length;
+  // V2 前端版: turn count 仅用 3 项
+  const upTurnCount = [ma514Golden, macdGolden, priceReclaimMA20].filter(Boolean).length;
+  const downTurnCount = [ma514Dead, macdDead, priceLoseMA20].filter(Boolean).length;
 
   return {
-    ma514Golden,
-    ma514Dead,
-    macdGolden,
-    macdDead,
-    priceReclaimMA20,
-    priceLoseMA20,
-    rsiLowRecovery,
-    rsiHighDrop,
-    kdjRecover,
-    kdjFall,
-    upTurnCount,
-    downTurnCount,
+    ma514Golden, ma514Dead,
+    ma520Golden, ma520Dead,
+    macdGolden, macdDead,
+    priceReclaimMA20, priceLoseMA20,
+    rsiLowRecovery, rsiHighDrop,
+    kdjRecover, kdjFall,
+    upTurnCount, downTurnCount,
   };
 }
 
 function latestSnapshot(
   dailyBars: Candle[],
-  weeklyBars: Candle[],
+  _weeklyBars: Candle[],
   ctx: ReturnType<typeof buildIndicatorContext>
 ): IndicatorSnapshot {
   const close = last(ctx.close)!;
-  const streaks = calcStreaks(ctx.close);
+  const streaks = calcStreaksV2(dailyBars);
   const shadows = shadowRatios(last(dailyBars)!);
+
+  const ma5v = last(ctx.ma5) ?? null;
+  const ma10v = last(ctx.ma10) ?? null;
+  const ma20v = last(ctx.ma20) ?? null;
+  const ma60v = last(ctx.ma60) ?? null;
+  const maAlign = calcMAAlignmentScore(ma5v, ma10v, ma20v, ma60v);
 
   return {
     close,
-    ma5: last(ctx.ma5) ?? null,
-    ma10: last(ctx.ma10) ?? null,
+    ma5: ma5v,
+    ma10: ma10v,
     ma14: last(ctx.ma14) ?? null,
-    ma20: last(ctx.ma20) ?? null,
-    ma60: last(ctx.ma60) ?? null,
+    ma20: ma20v,
+    ma60: ma60v,
+    maAlignmentScore: maAlign >= 0 ? maAlign : 0,
     rsi14: last(ctx.rsi14) ?? null,
     bias20: last(ctx.bias20) ?? null,
     bias60: last(ctx.bias60) ?? null,
@@ -656,8 +554,8 @@ function latestSnapshot(
     percentB: last(ctx.percentB) ?? null,
     ma20Slope5: last(ctx.ma20Slope5) ?? null,
     volumeRatio5: last(ctx.volumeRatio5) ?? null,
-    upStreak: streaks.upStreak,
-    downStreak: streaks.downStreak,
+    consecutiveUpDays: streaks.consecutiveUpDays,
+    consecutiveDownDays: streaks.consecutiveDownDays,
     dayReturnPct: dayReturnPct(dailyBars),
     upperShadowPct: shadows.upperShadowPct,
     lowerShadowPct: shadows.lowerShadowPct,
@@ -672,91 +570,69 @@ function latestSnapshot(
   };
 }
 
-// -----------------------------
-// 核心分类
-// -----------------------------
+// =============================================
+// 核心分类引擎
+// =============================================
+
+const EMPTY_TURN_SIGNALS: TurnSignals = {
+  ma514Golden: false, ma514Dead: false,
+  ma520Golden: false, ma520Dead: false,
+  macdGolden: false, macdDead: false,
+  priceReclaimMA20: false, priceLoseMA20: false,
+  rsiLowRecovery: false, rsiHighDrop: false,
+  kdjRecover: false, kdjFall: false,
+  upTurnCount: 0, downTurnCount: 0,
+};
+
+const EMPTY_INDICATOR: IndicatorSnapshot = {
+  close: 0,
+  ma5: null, ma10: null, ma14: null, ma20: null, ma60: null,
+  maAlignmentScore: 0,
+  rsi14: null, bias20: null, bias60: null,
+  dif: null, dea: null, macdHist: null,
+  k: null, d: null, j: null,
+  bollMid: null, bollUpper: null, bollLower: null, percentB: null,
+  ma20Slope5: null, volumeRatio5: null,
+  consecutiveUpDays: 0, consecutiveDownDays: 0,
+  dayReturnPct: null, upperShadowPct: null, lowerShadowPct: null, amplitudePct: null,
+  weekClose: null, weekMA5: null, weekMA10: null,
+  weekDif: null, weekDea: null, weekMacdHist: null,
+};
+
+/** V2: Season Score 温度映射 */
+const TEMP_MAP: Record<PureStage, number> = { winter: 10, spring: 40, summer: 80, autumn: 60 };
+
+function calcSeasonScore(scores: StageScores): number {
+  const total = scores.winter + scores.spring + scores.summer + scores.autumn;
+  if (total === 0) return 50;
+  return Math.round(
+    (scores.winter * TEMP_MAP.winter +
+      scores.spring * TEMP_MAP.spring +
+      scores.summer * TEMP_MAP.summer +
+      scores.autumn * TEMP_MAP.autumn) / total
+  );
+}
 
 export function classifyStock(input: ClassificationInput): ClassificationResult {
   const { dailyBars, weeklyBars, currentStage = "unknown" } = input;
 
   if (dailyBars.length < 60 || weeklyBars.length < 10) {
     return {
-      stage: "unknown",
-      quantStage: "unknown",
-      finalStage: "unknown",
-      confidence: 0,
-      confidenceLevel: "low",
+      stage: "unknown", quantStage: "unknown", finalStage: "unknown",
+      confidence: 0, confidenceLevel: "low", seasonScore: 50,
       scores: emptyScores(),
-      scoreBreakdown: {
-        trend: emptyScores(),
-        turn: emptyScores(),
-        extension: emptyScores(),
-        weekly: emptyScores(),
-      },
-      turnSignals: {
-        ma514Golden: false,
-        ma514Dead: false,
-        macdGolden: false,
-        macdDead: false,
-        priceReclaimMA20: false,
-        priceLoseMA20: false,
-        rsiLowRecovery: false,
-        rsiHighDrop: false,
-        kdjRecover: false,
-        kdjFall: false,
-        upTurnCount: 0,
-        downTurnCount: 0,
-      },
+      scoreBreakdown: { trend: emptyScores(), turn: emptyScores(), extension: emptyScores(), weekly: emptyScores() },
+      turnSignals: EMPTY_TURN_SIGNALS,
       flags: {
-        bullAlignment: false,
-        bearAlignment: false,
-        weeklyBullish: false,
-        weeklyBearish: false,
-        dailyBullStrong: false,
-        dailyBearStrong: false,
+        bullAlignment: false, bearAlignment: false,
+        weeklyBullish: false, weeklyBearish: false,
+        dailyBullStrong: false, dailyBearStrong: false,
         weeklyDailyConflict: false,
-        springEligible: false,
-        autumnEligible: false,
-        lowEvidence: true,
+        springEligible: false, autumnEligible: false, lowEvidence: true,
       },
       notes: ["数据不足：需要至少60根日线和10根周线"],
-      aiCandidates: [],
-      needsAI: false,
-      indicators: {
-        close: last(dailyBars)?.close ?? 0,
-        ma5: null,
-        ma10: null,
-        ma14: null,
-        ma20: null,
-        ma60: null,
-        rsi14: null,
-        bias20: null,
-        bias60: null,
-        dif: null,
-        dea: null,
-        macdHist: null,
-        k: null,
-        d: null,
-        j: null,
-        bollMid: null,
-        bollUpper: null,
-        bollLower: null,
-        percentB: null,
-        ma20Slope5: null,
-        volumeRatio5: null,
-        upStreak: 0,
-        downStreak: 0,
-        dayReturnPct: null,
-        upperShadowPct: null,
-        lowerShadowPct: null,
-        amplitudePct: null,
-        weekClose: null,
-        weekMA5: null,
-        weekMA10: null,
-        weekDif: null,
-        weekDea: null,
-        weekMacdHist: null,
-      },
+      aiCandidates: [], needsAI: false,
+      indicators: { ...EMPTY_INDICATOR, close: last(dailyBars)?.close ?? 0 },
     };
   }
 
@@ -771,346 +647,337 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
   const weeklyRaw = emptyScores();
 
   const {
-    ma5,
-    ma10,
-    ma20,
-    ma60,
-    rsi14,
-    bias20,
-    dif,
-    dea,
-    macdHist: hist,
-    percentB,
-    ma20Slope5,
-    volumeRatio5,
-    weekMA5,
-    weekMA10,
-    weekDif,
-    weekDea,
-    weekMacdHist: weekHistVal,
+    close, ma20, ma60, rsi14, bias20, bias60,
+    macdHist: histVal, percentB, ma20Slope5, volumeRatio5,
+    j, upperShadowPct, lowerShadowPct, dayReturnPct: dayRet, amplitudePct: amplitude,
+    maAlignmentScore: maAlign,
   } = indicators;
 
-  const close = indicators.close;
-  const j = indicators.j;
-  const upperShadowPct = indicators.upperShadowPct;
-  const lowerShadowPct = indicators.lowerShadowPct;
-  const dayRet = indicators.dayReturnPct;
-  const amplitude = indicators.amplitudePct;
-
-  const bullAlignment =
-    isNum(ma5) && isNum(ma10) && isNum(ma20) && isNum(ma60) &&
-    ma5 > ma10 && ma10 > ma20 && ma20 > ma60;
-
-  const bearAlignment =
-    isNum(ma5) && isNum(ma10) && isNum(ma20) && isNum(ma60) &&
-    ma5 < ma10 && ma10 < ma20 && ma20 < ma60;
-
   const weeklyBullish =
-    isNum(indicators.weekClose) && isNum(weekMA5) && isNum(weekMA10) &&
-    indicators.weekClose > weekMA5 && weekMA5 > weekMA10;
+    isNum(indicators.weekClose) && isNum(indicators.weekMA5) && isNum(indicators.weekMA10) &&
+    indicators.weekClose > indicators.weekMA5 && indicators.weekMA5 > indicators.weekMA10;
 
   const weeklyBearish =
-    isNum(indicators.weekClose) && isNum(weekMA5) && isNum(weekMA10) &&
-    indicators.weekClose < weekMA5 && weekMA5 < weekMA10;
+    isNum(indicators.weekClose) && isNum(indicators.weekMA5) && isNum(indicators.weekMA10) &&
+    indicators.weekClose < indicators.weekMA5 && indicators.weekMA5 < indicators.weekMA10;
 
-  const dailyBullStrong = isNum(ma20) && isNum(ma60) && bullAlignment && close > ma20 && close > ma60;
-  const dailyBearStrong = isNum(ma20) && isNum(ma60) && bearAlignment && close < ma20 && close < ma60;
-
+  const bullAlignment = maAlign === 3;
+  const bearAlignment = maAlign === 0;
+  const dailyBullStrong = bullAlignment && isNum(ma20) && isNum(ma60) && close > ma20 && close > ma60;
+  const dailyBearStrong = bearAlignment && isNum(ma20) && isNum(ma60) && close < ma20 && close < ma60;
   const weeklyDailyConflict =
     (dailyBullStrong && weeklyBearish) || (dailyBearStrong && weeklyBullish);
 
-  // -----------------------------
-  // 1) trend_score
-  // -----------------------------
-  if (bullAlignment) {
+  // ==========================================
+  // 1) TREND（上限 6）
+  // ==========================================
+
+  // 均线排列
+  if (maAlign === 3) {
     addScore(trendRaw, "summer", 4);
-    notes.push("趋势: MA5>MA10>MA20>MA60，多头排列");
-  }
-
-  if (bearAlignment) {
+    notes.push("趋势: 均线排列=3，多头排列 → summer+4");
+  } else if (maAlign === 0) {
     addScore(trendRaw, "winter", 4);
-    notes.push("趋势: MA5<MA10<MA20<MA60，空头排列");
+    notes.push("趋势: 均线排列=0，空头排列 → winter+4");
+  } else if (maAlign === 2) {
+    addScore(trendRaw, "summer", 2);
+    notes.push("趋势: 均线排列=2，部分多头 → summer+2");
+  } else if (maAlign === 1) {
+    addScore(trendRaw, "winter", 2);
+    notes.push("趋势: 均线排列=1，部分空头 → winter+2");
   }
 
+  // 价格 vs MA20/MA60
   if (isNum(ma20) && isNum(ma60)) {
     if (close > ma20 && close > ma60) {
       addScore(trendRaw, "summer", 2);
-      notes.push("趋势: 价格站上MA20和MA60");
+      notes.push("趋势: 价格>MA20且>MA60 → summer+2");
     } else if (close < ma20 && close < ma60) {
       addScore(trendRaw, "winter", 2);
-      notes.push("趋势: 价格跌破MA20和MA60");
+      notes.push("趋势: 价格<MA20且<MA60 → winter+2");
     } else if (close > ma20 && close < ma60) {
       addScore(trendRaw, "spring", 3);
-      notes.push("趋势: 价格在MA20上方但MA60下方，偏春季过渡");
+      notes.push("趋势: 价格>MA20且<MA60（春季位置） → spring+3");
     } else if (close < ma20 && close > ma60) {
       addScore(trendRaw, "autumn", 3);
-      notes.push("趋势: 价格在MA20下方但MA60上方，偏秋季过渡");
+      notes.push("趋势: 价格<MA20且>MA60（秋季位置） → autumn+3");
     }
   }
 
+  // MA20 斜率
   if (isNum(ma20Slope5)) {
     if (ma20Slope5 > 1.0) {
       addScore(trendRaw, "summer", 1);
-      notes.push("趋势: MA20斜率>1%，中期趋势向上");
+      notes.push("趋势: MA20斜率>1% → summer+1");
     } else if (ma20Slope5 < -1.0) {
       addScore(trendRaw, "winter", 1);
-      notes.push("趋势: MA20斜率<-1%，中期趋势向下");
-    } else if (ma20Slope5 > 0 && ma20Slope5 <= 1.0 && signals.upTurnCount >= 2) {
+      notes.push("趋势: MA20斜率<-1% → winter+1");
+    } else if (ma20Slope5 > 0 && signals.upTurnCount >= 2) {
       addScore(trendRaw, "spring", 1);
-      notes.push("趋势: MA20斜率温和转正且出现转强确认");
-    } else if (ma20Slope5 < 0 && ma20Slope5 >= -1.0 && signals.downTurnCount >= 2) {
+      notes.push("趋势: MA20斜率>0且up_turn≥2 → spring+1");
+    } else if (ma20Slope5 < 0 && signals.downTurnCount >= 2) {
       addScore(trendRaw, "autumn", 1);
-      notes.push("趋势: MA20斜率温和转负且出现转弱确认");
+      notes.push("趋势: MA20斜率<0且down_turn≥2 → autumn+1");
     }
   }
 
-  // -----------------------------
-  // 2) turn_score
-  // -----------------------------
-  if (signals.ma514Golden) {
-    addScore(turnRaw, "spring", 3);
-    notes.push("转折: MA5/14 金叉");
-  }
-  if (signals.macdGolden) {
-    addScore(turnRaw, "spring", 3);
-    notes.push("转折: MACD 金叉");
-  }
-  if (signals.priceReclaimMA20) {
-    addScore(turnRaw, "spring", 2);
-    notes.push("转折: 价格重新站上MA20");
-  }
-  if (signals.rsiLowRecovery) {
-    addScore(turnRaw, "spring", 2);
-    notes.push("转折: RSI 低位回升");
-  }
-  if (signals.kdjRecover) {
-    addScore(turnRaw, "spring", 1);
-    notes.push("转折: KDJ J 从低位回到20上方");
+  // V2: MACD柱正负
+  if (isNum(histVal)) {
+    if (histVal > 0) {
+      addScore(trendRaw, "summer", 2);
+      notes.push("趋势: MACD柱>0 → summer+2");
+    } else {
+      addScore(trendRaw, "winter", 2);
+      notes.push("趋势: MACD柱≤0 → winter+2");
+    }
   }
 
-  if (signals.ma514Dead) {
-    addScore(turnRaw, "autumn", 3);
-    notes.push("转折: MA5/14 死叉");
-  }
-  if (signals.macdDead) {
-    addScore(turnRaw, "autumn", 3);
-    notes.push("转折: MACD 死叉");
-  }
-  if (signals.priceLoseMA20) {
-    addScore(turnRaw, "autumn", 2);
-    notes.push("转折: 价格跌破MA20");
-  }
-  if (signals.rsiHighDrop) {
-    addScore(turnRaw, "autumn", 2);
-    notes.push("转折: RSI 高位回落");
-  }
-  if (signals.kdjFall) {
-    addScore(turnRaw, "autumn", 1);
-    notes.push("转折: KDJ J 从高位跌回80下方");
+  // ==========================================
+  // 2) TURN（上限 6）
+  // ==========================================
+
+  if (signals.ma514Golden) { addScore(turnRaw, "spring", 3); notes.push("转折: MA5/14金叉 → spring+3"); }
+  if (signals.ma514Dead) { addScore(turnRaw, "autumn", 3); notes.push("转折: MA5/14死叉 → autumn+3"); }
+  if (signals.ma520Golden) { addScore(turnRaw, "spring", 2); notes.push("转折: MA5/20金叉 → spring+2"); }
+  if (signals.ma520Dead) { addScore(turnRaw, "autumn", 2); notes.push("转折: MA5/20死叉 → autumn+2"); }
+  if (signals.macdGolden) { addScore(turnRaw, "spring", 3); notes.push("转折: MACD金叉 → spring+3"); }
+  if (signals.macdDead) { addScore(turnRaw, "autumn", 3); notes.push("转折: MACD死叉 → autumn+3"); }
+  if (signals.priceReclaimMA20) { addScore(turnRaw, "spring", 2); notes.push("转折: 价格上穿MA20 → spring+2"); }
+  if (signals.priceLoseMA20) { addScore(turnRaw, "autumn", 2); notes.push("转折: 价格下穿MA20 → autumn+2"); }
+
+  // V2: RSI<30 按 turn_count 分配
+  if (isNum(rsi14)) {
+    if (rsi14 < 30) {
+      if (signals.upTurnCount >= 2) {
+        addScore(turnRaw, "spring", 1);
+        notes.push("转折: RSI<30且up_turn≥2 → spring+1");
+      } else {
+        addScore(turnRaw, "winter", 1);
+        notes.push("转折: RSI<30且up_turn<2 → winter+1");
+      }
+    }
+    if (rsi14 > 70) {
+      if (signals.downTurnCount >= 2) {
+        addScore(turnRaw, "autumn", 1);
+        notes.push("转折: RSI>70且down_turn≥2 → autumn+1");
+      } else {
+        addScore(turnRaw, "summer", 1);
+        notes.push("转折: RSI>70且down_turn<2 → summer+1");
+      }
+    }
   }
 
-  // -----------------------------
-  // 3) extension_score
-  // -----------------------------
+  // V2: KDJ J<20 → spring+1, J>80 → autumn+1
+  if (isNum(j)) {
+    if (j < 20) { addScore(turnRaw, "spring", 1); notes.push("转折: KDJ J<20 → spring+1"); }
+    if (j > 80) { addScore(turnRaw, "autumn", 1); notes.push("转折: KDJ J>80 → autumn+1"); }
+  }
+
+  // ==========================================
+  // 3) EXTENSION（上限 3）
+  // ==========================================
+
   if (isNum(percentB)) {
     if (percentB <= 20) {
       if (signals.upTurnCount >= 2) {
         addScore(extensionRaw, "spring", 1);
-        notes.push("扩展: %B<=20 且已出现转强，更偏春季");
+        notes.push("扩展: %B≤20且up_turn≥2 → spring+1");
       } else {
         addScore(extensionRaw, "winter", 2);
-        notes.push("扩展: %B<=20，偏冬季低位弱势");
+        notes.push("扩展: %B≤20且up_turn<2 → winter+2");
       }
     } else if (percentB >= 80) {
       if (signals.downTurnCount >= 2) {
         addScore(extensionRaw, "autumn", 2);
-        notes.push("扩展: %B>=80 且已出现转弱，更偏秋季");
+        notes.push("扩展: %B≥80且down_turn≥2 → autumn+2");
       } else {
         addScore(extensionRaw, "summer", 1);
-        notes.push("扩展: %B>=80 但未见明确转弱，仍偏强势夏季");
+        notes.push("扩展: %B≥80且down_turn<2 → summer+1");
+      }
+    } else {
+      // V2: %B < 50 → spring+1, %B >= 50 → summer+1
+      if (percentB < 50) {
+        addScore(extensionRaw, "spring", 1);
+        notes.push("扩展: %B<50 → spring+1");
+      } else {
+        addScore(extensionRaw, "summer", 1);
+        notes.push("扩展: %B≥50 → summer+1");
       }
     }
   }
 
+  // RSI extreme in extension
   if (isNum(rsi14)) {
-    if (rsi14 < 30) {
-      if (signals.upTurnCount >= 2) {
-        addScore(extensionRaw, "spring", 1);
-        notes.push("扩展: RSI<30 且转强，偏春季");
-      } else {
-        addScore(extensionRaw, "winter", 1);
-        notes.push("扩展: RSI<30，偏冬季");
-      }
-    } else if (rsi14 > 70) {
-      if (signals.downTurnCount >= 2) {
-        addScore(extensionRaw, "autumn", 1);
-        notes.push("扩展: RSI>70 且转弱，偏秋季");
-      } else {
-        addScore(extensionRaw, "summer", 1);
-        notes.push("扩展: RSI>70 但未转弱，仍偏夏季强势");
-      }
+    if (rsi14 < 30 && signals.upTurnCount >= 2) {
+      addScore(extensionRaw, "spring", 1);
+      notes.push("扩展: RSI<30且up_turn≥2 → spring+1");
+    }
+    if (rsi14 > 70 && signals.downTurnCount >= 2) {
+      addScore(extensionRaw, "autumn", 1);
+      notes.push("扩展: RSI>70且down_turn≥2 → autumn+1");
     }
   }
 
+  // BIAS
   if (isNum(bias20)) {
-    if (bias20 < -8) {
-      if (signals.upTurnCount >= 2) {
-        addScore(extensionRaw, "spring", 1);
-        notes.push("扩展: BIAS20<-8% 且转强，偏春季");
-      } else {
-        addScore(extensionRaw, "winter", 1);
-        notes.push("扩展: BIAS20<-8%，偏冬季");
-      }
-    } else if (bias20 > 8) {
-      if (signals.downTurnCount >= 2) {
-        addScore(extensionRaw, "autumn", 1);
-        notes.push("扩展: BIAS20>8% 且转弱，偏秋季");
-      } else {
-        addScore(extensionRaw, "summer", 1);
-        notes.push("扩展: BIAS20>8% 但未转弱，仍偏夏季");
-      }
+    if (bias20 > 8 && signals.downTurnCount >= 2) {
+      addScore(extensionRaw, "autumn", 1);
+      notes.push("扩展: BIAS20>8%且down_turn≥2 → autumn+1");
+    }
+    if (bias20 < -8 && signals.upTurnCount >= 2) {
+      addScore(extensionRaw, "spring", 1);
+      notes.push("扩展: BIAS20<-8%且up_turn≥2 → spring+1");
     }
   }
 
-  if (isNum(lowerShadowPct) && lowerShadowPct >= 40) {
-    addScore(extensionRaw, "spring", 1);
-    notes.push("扩展: 下影线>=40%，有承接");
+  // V2: BIAS60 > 15 → autumn+2（无需 turn_count）
+  if (isNum(bias60) && bias60 > 15) {
+    addScore(extensionRaw, "autumn", 2);
+    notes.push("扩展: BIAS60>15%（强信号） → autumn+2");
   }
+
+  // 连续涨跌 (V2: close vs open)
+  if (indicators.consecutiveUpDays >= 5) {
+    addScore(extensionRaw, "summer", 1);
+    notes.push("扩展: 连涨≥5天 → summer+1");
+  }
+  if (indicators.consecutiveDownDays >= 5) {
+    addScore(extensionRaw, "winter", 1);
+    notes.push("扩展: 连跌≥5天 → winter+1");
+  }
+
+  // V2: 日内涨跌幅多档
+  if (isNum(dayRet)) {
+    if (dayRet <= -3) {
+      addScore(extensionRaw, "winter", 2);
+      notes.push("扩展: 日内跌≤-3% → winter+2");
+    } else if (dayRet <= -1) {
+      addScore(extensionRaw, "winter", 1);
+      notes.push("扩展: 日内跌≤-1% → winter+1");
+    }
+    if (dayRet >= 3) {
+      addScore(extensionRaw, "summer", 1);
+      notes.push("扩展: 日内涨≥3% → summer+1");
+    } else if (dayRet >= 1) {
+      addScore(extensionRaw, "spring", 1);
+      notes.push("扩展: 日内涨≥1% → spring+1");
+    }
+  }
+
+  // 影线
   if (isNum(upperShadowPct) && upperShadowPct >= 40) {
     addScore(extensionRaw, "autumn", 1);
-    notes.push("扩展: 上影线>=40%，抛压较重");
+    notes.push("扩展: 上影线≥40% → autumn+1");
+  }
+  if (isNum(lowerShadowPct) && lowerShadowPct >= 40) {
+    addScore(extensionRaw, "spring", 1);
+    notes.push("扩展: 下影线≥40% → spring+1");
   }
 
+  // 放量
   if (isNum(volumeRatio5) && isNum(dayRet)) {
     if (volumeRatio5 > 2 && dayRet > 2) {
       addScore(extensionRaw, "summer", 1);
-      notes.push("扩展: 放量上涨");
+      notes.push("扩展: 放量上涨 → summer+1");
     }
     if (volumeRatio5 > 2 && isNum(amplitude) && amplitude > 4 && signals.downTurnCount >= 1) {
       addScore(extensionRaw, "autumn", 1);
-      notes.push("扩展: 放量大振幅且出现转弱迹象");
+      notes.push("扩展: 放量大振幅+转弱 → autumn+1");
     }
   }
 
-  if (indicators.downStreak >= 5) {
-    addScore(extensionRaw, "winter", 1);
-    notes.push("扩展: 连跌>=5天");
-  }
-  if (indicators.upStreak >= 5) {
-    addScore(extensionRaw, "summer", 1);
-    notes.push("扩展: 连涨>=5天");
-  }
-
-  // -----------------------------
-  // 4) weekly_score
-  // -----------------------------
+  // ==========================================
+  // 4) WEEKLY（上限 3）
+  // ==========================================
   if (weeklyBullish) {
     addScore(weeklyRaw, "summer", 2);
-    notes.push("周线: 收盘>周MA5>周MA10");
+    notes.push("周线: 收盘>WMA5>WMA10 → summer+2");
   }
   if (weeklyBearish) {
     addScore(weeklyRaw, "winter", 2);
-    notes.push("周线: 收盘<周MA5<周MA10");
+    notes.push("周线: 收盘<WMA5<WMA10 → winter+2");
   }
 
-  if (crossedAboveWithin(ctx.weekDif, ctx.weekDea, 3)) {
-    addScore(weeklyRaw, "spring", 2);
-    notes.push("周线: MACD 近3周金叉");
-  }
-  if (crossedBelowWithin(ctx.weekDif, ctx.weekDea, 3)) {
-    addScore(weeklyRaw, "autumn", 2);
-    notes.push("周线: MACD 近3周死叉");
-  }
-
-  if (
-    isNum(indicators.weekMacdHist) &&
-    ctx.weekHist.length >= 3 &&
-    isNum(ctx.weekHist[ctx.weekHist.length - 2]) &&
-    isNum(ctx.weekHist[ctx.weekHist.length - 3]) &&
-    indicators.weekMacdHist > 0 &&
-    indicators.weekMacdHist > ctx.weekHist[ctx.weekHist.length - 2]! &&
-    ctx.weekHist[ctx.weekHist.length - 2]! > ctx.weekHist[ctx.weekHist.length - 3]!
-  ) {
-    addScore(weeklyRaw, "summer", 1);
-    notes.push("周线: MACD 柱连续2周扩张");
+  // V2: 周线 MACD 柱 3周前 vs 当前的正负翻转（需≥35周数据）
+  if (weeklyBars.length >= 35 && ctx.weekHist.length >= 4) {
+    const hist3WeeksAgo = ctx.weekHist[ctx.weekHist.length - 4];
+    const histNow = last(ctx.weekHist);
+    if (isNum(hist3WeeksAgo) && isNum(histNow)) {
+      if (hist3WeeksAgo <= 0 && histNow > 0) {
+        addScore(weeklyRaw, "spring", 2);
+        notes.push("周线: MACD柱3周前≤0→当前>0 → spring+2");
+      }
+      if (hist3WeeksAgo >= 0 && histNow < 0) {
+        addScore(weeklyRaw, "autumn", 2);
+        notes.push("周线: MACD柱3周前≥0→当前<0 → autumn+2");
+      }
+    }
   }
 
-  if (
-    isNum(indicators.weekMacdHist) &&
-    ctx.weekHist.length >= 3 &&
-    isNum(ctx.weekHist[ctx.weekHist.length - 2]) &&
-    isNum(ctx.weekHist[ctx.weekHist.length - 3]) &&
-    indicators.weekMacdHist < 0 &&
-    indicators.weekMacdHist < ctx.weekHist[ctx.weekHist.length - 2]! &&
-    ctx.weekHist[ctx.weekHist.length - 2]! < ctx.weekHist[ctx.weekHist.length - 3]!
-  ) {
-    addScore(weeklyRaw, "winter", 1);
-    notes.push("周线: MACD 柱连续2周走弱");
-  }
-
-  // 分组封顶
+  // ==========================================
+  // 分组封顶 + 合计
+  // ==========================================
   const trend = capScores(trendRaw, 6);
   const turn = capScores(turnRaw, 6);
   const extension = capScores(extensionRaw, 3);
   const weekly = capScores(weeklyRaw, 3);
-
   const totalScores = sumScores(trend, turn, extension, weekly);
 
-  // 春/秋硬门槛
+  // ==========================================
+  // 春/秋硬门控 — V2 压制逻辑
+  // ==========================================
   const springEligible = signals.upTurnCount >= 2 && totalScores.spring >= 5;
   const autumnEligible = signals.downTurnCount >= 2 && totalScores.autumn >= 5;
 
-  const validScores: Partial<Record<PureStage, number>> = {
-    winter: totalScores.winter,
-    summer: totalScores.summer,
-    spring: springEligible ? totalScores.spring : Number.NEGATIVE_INFINITY,
-    autumn: autumnEligible ? totalScores.autumn : Number.NEGATIVE_INFINITY,
-  };
+  const validScores: Record<PureStage, number> = cloneScores(totalScores);
 
-  let quantStage = resolveTopStage(validScores, currentStage, dailyBullStrong, dailyBearStrong);
+  // V2: 压制到亚军分（不再设为 -Infinity）
+  const sortedOriginal = topNStages(totalScores, 4);
+  const maxOriginalScore = sortedOriginal[0]?.[1] ?? 0;
+  const runnerUpOriginalScore = sortedOriginal[1]?.[1] ?? 0;
 
-  // 强趋势优先：除非对向转折显著更高
-  if (
-    dailyBullStrong &&
-    quantStage === "autumn" &&
-    autumnEligible &&
-    totalScores.autumn - totalScores.summer < 3
-  ) {
-    quantStage = "summer";
-    notes.push("强趋势优先: 多头结构完整，秋季未显著胜出，维持夏季");
+  if (!springEligible) {
+    if (totalScores.spring === maxOriginalScore && totalScores.spring > runnerUpOriginalScore) {
+      validScores.spring = runnerUpOriginalScore;
+      notes.push(`春季门控: spring分(${totalScores.spring})降至亚军分(${runnerUpOriginalScore})`);
+    }
+  }
+  if (!autumnEligible) {
+    if (totalScores.autumn === maxOriginalScore && totalScores.autumn > runnerUpOriginalScore) {
+      validScores.autumn = runnerUpOriginalScore;
+      notes.push(`秋季门控: autumn分(${totalScores.autumn})降至亚军分(${runnerUpOriginalScore})`);
+    }
   }
 
-  if (
-    dailyBearStrong &&
-    quantStage === "spring" &&
-    springEligible &&
-    totalScores.spring - totalScores.winter < 3
-  ) {
-    quantStage = "winter";
-    notes.push("强趋势优先: 空头结构完整，春季未显著胜出，维持冬季");
-  }
-
+  // 选出最高分季节
   const validTop2 = topNStages(validScores, 2);
+  const topStage = validTop2[0]?.[0] ?? "winter";
   const top1Score = validTop2[0]?.[1] ?? 0;
   const top2Score = validTop2[1]?.[1] ?? 0;
+
+  const quantStage: Stage = topStage;
+
+  // ==========================================
+  // Confidence — V2 公式
+  // ==========================================
   const scoreStrength = Math.min(top1Score / 10, 1);
-  const scoreSeparation = (top1Score - top2Score) / Math.max(top1Score, 1);
-  const confidence = round(0.5 * scoreStrength + 0.5 * scoreSeparation, 4);
+  const scoreSeparation = top1Score > 0 ? (top1Score - top2Score) / top1Score : 0;
+  const confidence = round2(0.5 * scoreStrength + 0.5 * scoreSeparation);
 
   const confidenceLevel: ConfidenceLevel =
     confidence >= 0.75 ? "high" : confidence >= 0.55 ? "medium" : "low";
 
   const lowEvidence = top1Score < 5 || top1Score - top2Score < 2;
 
+  // Season Score
+  const seasonScore = calcSeasonScore(totalScores);
+
+  // AI candidates
   const aiCandidates = buildAICandidates(currentStage, validTop2);
   const needsAI =
     (top1Score - top2Score <= 2) ||
     confidenceLevel === "low" ||
-    weeklyDailyConflict ||
-    (
-      (quantStage === "spring" && currentStage !== "unknown" && currentStage !== "spring" && springEligible) ||
-      (quantStage === "autumn" && currentStage !== "unknown" && currentStage !== "autumn" && autumnEligible)
-    );
+    weeklyDailyConflict;
 
   return {
     stage: quantStage,
@@ -1118,66 +985,22 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
     finalStage: quantStage,
     confidence,
     confidenceLevel,
+    seasonScore,
     scores: cloneScores(totalScores),
-    scoreBreakdown: {
-      trend,
-      turn,
-      extension,
-      weekly,
-    },
+    scoreBreakdown: { trend, turn, extension, weekly },
     turnSignals: signals,
     flags: {
-      bullAlignment,
-      bearAlignment,
-      weeklyBullish,
-      weeklyBearish,
-      dailyBullStrong,
-      dailyBearStrong,
+      bullAlignment, bearAlignment,
+      weeklyBullish, weeklyBearish,
+      dailyBullStrong, dailyBearStrong,
       weeklyDailyConflict,
-      springEligible,
-      autumnEligible,
-      lowEvidence,
+      springEligible, autumnEligible, lowEvidence,
     },
     notes,
     aiCandidates,
     needsAI,
     indicators,
   };
-}
-
-function resolveTopStage(
-  validScores: Partial<Record<PureStage, number>>,
-  currentStage: Stage,
-  strongSummerBias: boolean,
-  strongWinterBias: boolean
-): PureStage {
-  const entries = (Object.entries(validScores) as [PureStage, number][])
-    .filter(([, v]) => Number.isFinite(v))
-    .sort((a, b) => b[1] - a[1]);
-
-  const maxScore = entries[0][1];
-  const tied = entries.filter(([, v]) => v === maxScore).map(([stage]) => stage);
-
-  if (tied.length === 1) return tied[0];
-
-  if (strongSummerBias && tied.includes("summer")) return "summer";
-  if (strongWinterBias && tied.includes("winter")) return "winter";
-
-  if (currentStage !== "unknown" && tied.includes(currentStage as PureStage)) {
-    return currentStage as PureStage;
-  }
-
-  if (currentStage !== "unknown") {
-    const next = getNextStage(currentStage as PureStage);
-    if (tied.includes(next)) return next;
-  }
-
-  const fallbackOrder: PureStage[] = ["summer", "winter", "spring", "autumn"];
-  for (const s of fallbackOrder) {
-    if (tied.includes(s)) return s;
-  }
-
-  return entries[0][0];
 }
 
 function buildAICandidates(
@@ -1190,9 +1013,9 @@ function buildAICandidates(
   return Array.from(set);
 }
 
-// -----------------------------
-// 状态机 + 2日确认
-// -----------------------------
+// =============================================
+// 状态机 + 2日确认 (V2 §10)
+// =============================================
 
 const CYCLE: PureStage[] = ["winter", "spring", "summer", "autumn"];
 
@@ -1220,15 +1043,9 @@ export function updatePersistenceState(params: {
   let effectivePredictedStage = predictedStage;
   let reason = "";
 
-  const sameAsCurrent = predictedStage === state.currentStage;
-
-  if (sameAsCurrent) {
+  if (predictedStage === state.currentStage) {
     return {
-      state: {
-        currentStage: state.currentStage,
-        pendingStage: null,
-        pendingCount: 0,
-      },
+      state: { currentStage: state.currentStage, pendingStage: null, pendingCount: 0 },
       switched: false,
       effectivePredictedStage,
       originalPredictedStage: predictedStage,
@@ -1236,7 +1053,6 @@ export function updatePersistenceState(params: {
     };
   }
 
-  // 非相邻先降级为相邻过渡
   if (!isAdjacentForward(state.currentStage, predictedStage)) {
     effectivePredictedStage = downgradeToAdjacent(state.currentStage);
     reason = `非相邻跳转(${state.currentStage}->${predictedStage})，降级为相邻过渡阶段 ${effectivePredictedStage}`;
@@ -1254,17 +1070,11 @@ export function updatePersistenceState(params: {
     nextPendingCount = 1;
   }
 
-  // 相邻过渡需要2日确认，强信号可以1日切换
-  const adjacent = isAdjacentForward(state.currentStage, effectivePredictedStage);
   const requiredDays = (top1MinusTop2 >= 5 && weeklyAligned) ? 1 : 2;
 
   if (nextPendingCount >= requiredDays) {
     return {
-      state: {
-        currentStage: effectivePredictedStage,
-        pendingStage: null,
-        pendingCount: 0,
-      },
+      state: { currentStage: effectivePredictedStage, pendingStage: null, pendingCount: 0 },
       switched: true,
       effectivePredictedStage,
       originalPredictedStage: predictedStage,
@@ -1273,11 +1083,7 @@ export function updatePersistenceState(params: {
   }
 
   return {
-    state: {
-      currentStage: state.currentStage,
-      pendingStage: nextPendingStage,
-      pendingCount: nextPendingCount,
-    },
+    state: { currentStage: state.currentStage, pendingStage: nextPendingStage, pendingCount: nextPendingCount },
     switched: false,
     effectivePredictedStage,
     originalPredictedStage: predictedStage,
