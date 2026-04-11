@@ -610,6 +610,34 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
                   <p>≤1 → 信号太弱，风险预算系数归零（禁止买入）</p>
                   <p>2 → 弱信号，风险预算打 7 折</p>
                   <p>3–5 → 正常到极强，风险预算按比例放大</p>
+                  <details className="mt-1">
+                    <summary className="cursor-pointer text-foreground/60 hover:text-foreground/80 select-none">
+                      置信度 → 评分对照表 ▸
+                    </summary>
+                    <table className="mt-1.5 w-full text-[11px] border-collapse">
+                      <thead>
+                        <tr className="text-foreground/50">
+                          <th className="text-left py-0.5 pr-3 font-medium">confidence</th>
+                          <th className="text-left py-0.5 font-medium">setupScore</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/30">
+                        {[
+                          ["< 50%",  "1 — 禁止买入"],
+                          ["50–65%", "2 — 弱信号，×0.7"],
+                          ["65–75%", "3 — 正常，×1.0"],
+                          ["75–85%", "4 — 强，×1.15"],
+                          ["≥ 85%",  "5 — 极强，×1.25"],
+                        ].map(([conf, score]) => (
+                          <tr key={conf}>
+                            <td className="py-0.5 pr-3 tabular-nums">{conf}</td>
+                            <td className="py-0.5">{score}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="mt-1.5 text-foreground/50">置信度来自 stockClassifier.ts，反映四季分类的确信程度——各指标越一致、信号越清晰，置信度越高。</p>
+                  </details>
                 </div>
                 <div className="space-y-1 pt-0.5">
                   <p className="font-medium text-foreground/70">② 春季先锋仓 / 确认仓（仅春季触发）</p>
