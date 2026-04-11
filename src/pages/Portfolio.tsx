@@ -298,6 +298,7 @@ const Portfolio = () => {
               editing={editingPosition}
               posForm={posForm}
               totalAssets={config?.totalAssets ?? 0}
+              defaultQuotaPct={config?.defaultQuotaPct ?? 3}
               market={portfolio?.market ?? null}
               onEdit={() => startEditPosition(selectedPos.symbol)}
               onSave={() => handleSavePosition(selectedPos.symbol)}
@@ -420,6 +421,7 @@ interface DetailPanelProps {
   editing: boolean;
   posForm: { positionValue: string; costBasis: string; shares: string; quotaValue: string };
   totalAssets: number;
+  defaultQuotaPct: number;
   market: MarketContext | null;
   onEdit: () => void;
   onSave: () => void;
@@ -429,10 +431,40 @@ interface DetailPanelProps {
   onRemoveFromPortfolio: () => void;
 }
 
-function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSave, onCancel, onFormChange, onDelete, onRemoveFromPortfolio }: DetailPanelProps) {
+function DetailPanel({ pos, editing, posForm, totalAssets, defaultQuotaPct, market, onEdit, onSave, onCancel, onFormChange, onDelete, onRemoveFromPortfolio }: DetailPanelProps) {
   const positionPct = totalAssets > 0 ? (pos.currentPositionValue / totalAssets * 100) : 0;
   const targetPct = totalAssets > 0 ? (pos.finalTargetValue / totalAssets * 100) : 0;
   const portfolioCap = market?.portfolioCap ?? 0;
+
+  // P0: 风险预算各因子（与 positionEngine.ts 保持同步）
+  const baseRiskPctByRegime: Record<string, number> = {
+    healthy_bull: 0.008, neutral_bull: 0.006, mild: 0.005,
+    overheated: 0.0045, weakening: 0.0035, severe_winter: 0.002,
+  };
+  const regimeFactorByRegime: Record<string, number> = {
+    healthy_bull: 1.0, neutral_bull: 0.9, mild: 0.8,
+    overheated: 0.7, weakening: 0.5, severe_winter: 0.3,
+  };
+  const setupFactorByScore: Record<number, number> = { 0: 0, 1: 0, 2: 0.7, 3: 1.0, 4: 1.15, 5: 1.25 };
+  const regime = market?.regime ?? "mild";
+  const baseRiskPct = baseRiskPctByRegime[regime] ?? 0.005;
+  const regimeFactor = regimeFactorByRegime[regime] ?? 0.8;
+  const setupScore = Math.min(5, Math.max(0, Math.round(pos.setupScore)));
+  const setupFactor = setupFactorByScore[setupScore] ?? 1.0;
+
+  // P1: 单票硬上限（15%）突破检测
+  const singleNameHardCapPct = 15;
+  const hardCapBreached = positionPct > singleNameHardCapPct;
+  const hardCapExcessPct = positionPct - singleNameHardCapPct;
+
+  // P2: 有效配额来源判断
+  const defaultBaseQuota = totalAssets * (defaultQuotaPct / 100);
+  const softCap = totalAssets * 0.12;
+  const quotaIsDefault = Math.abs(pos.effectiveQuota - Math.min(defaultBaseQuota, softCap)) < 1;
+  const quotaHitSoftCap = defaultBaseQuota > softCap && Math.abs(pos.effectiveQuota - softCap) < 1;
+
+  // P3: 是否为减仓/退出场景
+  const isExitScenario = pos.action === "reduce" || pos.action === "exit_autumn" || pos.action === "force_exit" || pos.action === "take_profit";
 
   return (
     <div className="p-4 md:p-6 space-y-4 max-w-2xl">
@@ -468,6 +500,14 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
           <p key={i} className="text-sm">{note}</p>
         ))}
       </div>
+
+      {/* P1: 单票硬上限突破警告 */}
+      {hardCapBreached && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive space-y-0.5">
+          <p className="font-semibold">⚠️ 单票硬上限（{singleNameHardCapPct}%）已突破</p>
+          <p>当前 {positionPct.toFixed(1)}%，超限 {hardCapExcessPct.toFixed(1)}%——建议优先减至目标仓位</p>
+        </div>
+      )}
 
       {/* Position bar */}
       <div className="space-y-2">
@@ -535,7 +575,11 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
           >
             <div className="space-y-0.5">
               <FlowItem label="有效配额" value={formatMoney(pos.effectiveQuota)}
-                hint="= min(个股配额, 总资产×12%)，单只股票最高软上限12%" />
+                hint={quotaHitSoftCap
+                  ? `触达单票软上限：base_quota(${formatMoney(defaultBaseQuota)}) > 软上限(总资产×12%)，取 min = ${formatMoney(softCap)}`
+                  : quotaIsDefault
+                    ? `未配置 quota，使用默认 quota = 总资产×${defaultQuotaPct}% = ${formatMoney(defaultBaseQuota)}；effective_quota = min(base_quota, 单票软上限12%)`
+                    : `自定义 quota；effective_quota = min(自定义额度, 总资产×12% = ${formatMoney(softCap)})`} />
               <FlowItem label={`季节系数 (${pos.stage})`} value={`×${pos.stageCoeff}`}
                 hint={pos.stage === "winter" ? "冬季0.15：小仓试错，最多配15%配额"
                   : pos.stage === "spring" ? "春季0.45：启动建仓，配45%配额"
@@ -617,14 +661,26 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
             title="风险预算层 · Risk Budget"
             subtitle="这一笔最多能买多少？用可承受亏损反推最多能买多少"
             outputLabel="本笔可买"
-            outputValue={pos.allowedEntryValue > 0 ? formatMoney(pos.allowedEntryValue) : "—"}
-            outputColor={pos.allowedEntryValue > 0 ? "text-[hsl(var(--summer))]" : undefined}
+            outputValue={isExitScenario ? "减仓场景" : pos.allowedEntryValue > 0 ? formatMoney(pos.allowedEntryValue) : "—"}
+            outputColor={isExitScenario ? "text-muted-foreground" : pos.allowedEntryValue > 0 ? "text-[hsl(var(--summer))]" : undefined}
           >
             <div className="space-y-0.5">
-              <FlowItem label="风险预算" value={formatMoney(pos.riskBudgetValue)}
-                hint="= 总资产 × 基础风险% × 市场系数 × ATR环境系数 × 回撤系数 × 质量系数。这笔交易最多允许亏这么多钱" />
-              <FlowItem label="风险反推可买" value={formatMoney(pos.riskCappedValue)}
-                hint="每股风险 = max(ATR×倍数, 价格×最小止损%)，最多股数 = 风险预算÷每股风险，再乘以价格" />
+              <FlowItem label="基础风险% (baseRiskPct)" value={`${(baseRiskPct * 100).toFixed(2)}%`}
+                hint={`市场制度"${regimeLabels[regime]}"对应的基础单笔风险占比，决定这笔最多亏多少`} />
+              <FlowItem label="市场系数 (regimeFactor)" value={`×${regimeFactor}`}
+                hint="市场越弱，系数越低（健康多头1.0 → 严冬0.3），进一步压缩风险预算" />
+              <FlowItem label="ATR环境系数 (atrEnvFactor)" value={`×${pos.atrEnvFactor}`}
+                hint={pos.atrEnvFactor < 1.0 ? "近期波动异常放大，刹车减少预算" : "近期波动正常，系数=1.0"} />
+              <FlowItem label="回撤系数 (drawdownFactor)" value={`×${pos.drawdownFactor}`}
+                hint={pos.drawdownFactor < 1.0 ? "账户从高点回撤触发刹车（3%→0.75, 6%→0.5, 10%→0.25）" : "账户无明显回撤，系数=1.0"} />
+              <FlowItem label="质量系数 (setupFactor)" value={`×${setupFactor}`}
+                hint={setupFactor === 0 ? "评分≤1，信号无效，禁止开新仓" : `评分${pos.setupScore}/5 对应系数${setupFactor}（2→0.7, 3→1.0, 4→1.15, 5→1.25）`} />
+              <FormulaBlock
+                formula={`${formatMoney(totalAssets)} × ${(baseRiskPct*100).toFixed(2)}% × ${regimeFactor} × ${pos.atrEnvFactor} × ${pos.drawdownFactor} × ${setupFactor}`}
+                result={formatMoney(pos.riskBudgetValue)}
+              />
+              <FlowItem label="风险反推可买" value={isExitScenario ? "—" : formatMoney(pos.riskCappedValue)}
+                hint={isExitScenario ? "当前为减仓/退出场景，买入上限不适用" : "每股风险 = max(ATR×倍数, 价格×最小止损%)，最多股数 = 风险预算÷每股风险，再乘以价格"} />
               {pos.liquidityCappedValue > 0 && (
                 <FlowItem label="流动性上限" value={formatMoney(pos.liquidityCappedValue)}
                   hint="= 20日平均成交额 × 参与率(good:2%, fair:1%, poor:0.5%)，避免买太多导致滑点" />
@@ -637,11 +693,11 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
               )}
               <div className="border-t border-border/50 mt-1.5 pt-1.5">
                 <FlowItem
-                  label="输出 → min(缺口, 风险反推, 流动性)"
-                  value={pos.allowedEntryValue > 0 ? formatMoney(pos.allowedEntryValue) : "—"}
+                  label={isExitScenario ? "输出 → 买入上限" : "输出 → min(缺口, 风险反推, 流动性)"}
+                  value={isExitScenario ? "当前为减仓场景，买入上限不适用" : pos.allowedEntryValue > 0 ? formatMoney(pos.allowedEntryValue) : "—"}
                   emphasis
-                  color={pos.allowedEntryValue > 0 ? "text-[hsl(var(--summer))]" : undefined}
-                  hint="三者取最小值，确保每笔交易不超过风险和流动性限制"
+                  color={isExitScenario ? "text-muted-foreground" : pos.allowedEntryValue > 0 ? "text-[hsl(var(--summer))]" : undefined}
+                  hint={isExitScenario ? "仓位超出目标或触发止损/止盈，执行减仓操作，不需要买入上限" : "三者取最小值，确保每笔交易不超过风险和流动性限制"}
                 />
               </div>
             </div>
