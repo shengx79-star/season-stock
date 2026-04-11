@@ -410,6 +410,13 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
           <DetailItem label="流动性因子" value={pos.liquidityFactor.toFixed(2)} />
           {pos.hardStopPct != null && <DetailItem label="硬止损" value={`-${pos.hardStopPct.toFixed(1)}%`} color="text-destructive" />}
           {pos.trailingStopPct != null && <DetailItem label="跟踪止盈" value={`-${pos.trailingStopPct.toFixed(1)}%`} color="text-[hsl(var(--autumn))]" />}
+          {pos.riskBudgetValue > 0 && <DetailItem label="风险预算" value={formatMoney(pos.riskBudgetValue)} />}
+          {pos.allowedEntryValue > 0 && pos.positionGap > 0 && (
+            <DetailItem label="本笔可买" value={formatMoney(pos.allowedEntryValue)} color="text-[hsl(var(--summer))]" />
+          )}
+          {pos.drawdownFactor < 1.0 && (
+            <DetailItem label="回撤刹车" value={`×${pos.drawdownFactor}`} color="text-[hsl(var(--autumn))]" />
+          )}
         </div>
       </div>
 

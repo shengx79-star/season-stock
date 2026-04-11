@@ -31,6 +31,18 @@ export type ActionType =
 
 export type LiquidityLevel = "good" | "fair" | "poor" | "none";
 
+export type WyckoffEvent =
+  | "none"
+  | "spring_test"
+  | "SOS"
+  | "LPS"
+  | "reaccum_breakout"
+  | "BC"
+  | "UTAD"
+  | "SOW";
+
+export type SetupQuality = "none" | "weak" | "normal" | "strong" | "elite";
+
 export interface PositionInput {
   symbol: string;
   name: string;
@@ -43,6 +55,8 @@ export interface PositionInput {
   industry: string;
   themeCluster: string;
   liquidityLevel: LiquidityLevel;
+  wyckoffEvent?: WyckoffEvent;
+  setupScore?: number; // 0-5；未提供时由 quantConfidence 自动映射
 }
 
 export interface MarketContext {
@@ -82,6 +96,13 @@ export interface StockPositionResult {
   costBasis: number;
   currentPrice: number;
   pnlPct: number;
+  // v3.1: risk budget layer
+  setupScore: number;
+  wyckoffEvent: WyckoffEvent;
+  drawdownFactor: number;
+  riskBudgetValue: number;
+  riskCappedValue: number;
+  allowedEntryValue: number;
 }
 
 export interface PortfolioResult {
@@ -235,6 +256,87 @@ export function computeATR20(dailyBars: Candle[]): number {
 }
 
 // =============================================
+// v3.1: 风险预算层
+// =============================================
+
+/** 将 confidence(0-1) 映射为 setupScore(1-5) */
+function setupScoreFromConfidence(confidence: number): number {
+  if (confidence < 0.50) return 1;
+  if (confidence < 0.65) return 2;
+  if (confidence < 0.75) return 3;
+  if (confidence < 0.85) return 4;
+  return 5;
+}
+
+/**
+ * 计算本笔交易的风险预算金额。
+ * = totalAssets × baseRiskPct × regimeFactor × setupFactor × drawdownFactor
+ */
+function computeRiskBudget(
+  totalAssets: number,
+  regime: MarketRegime,
+  effectiveSetupScore: number,
+  drawdownPct: number,
+): number {
+  const baseRiskPctMap: Record<MarketRegime, number> = {
+    healthy_bull:  0.010,
+    neutral_bull:  0.0075,
+    mild:          0.0065,
+    overheated:    0.005,
+    weakening:     0.004,
+    severe_winter: 0.002,
+  };
+  const regimeFactorMap: Record<MarketRegime, number> = {
+    healthy_bull:  1.0,
+    neutral_bull:  0.8,
+    mild:          0.8,
+    overheated:    0.7,
+    weakening:     0.5,
+    severe_winter: 0.3,
+  };
+
+  // setupScore ≤ 1 → 不允许开新仓（factor=0）
+  const setupFactorMap: Record<number, number> = { 0: 0, 1: 0, 2: 0.7, 3: 1.0, 4: 1.2, 5: 1.3 };
+  const setupFactor = setupFactorMap[clamp(Math.round(effectiveSetupScore), 0, 5)] ?? 1.0;
+
+  const drawdownFactor =
+    drawdownPct < 0.03 ? 1.0 :
+    drawdownPct < 0.06 ? 0.75 :
+    drawdownPct < 0.10 ? 0.5  : 0.25;
+
+  return (
+    totalAssets *
+    baseRiskPctMap[regime] *
+    regimeFactorMap[regime] *
+    setupFactor *
+    drawdownFactor
+  );
+}
+
+/**
+ * 用风险预算反推可买金额。
+ * perShareRisk = max(ATRMultiplier × atr20, entryPrice × minStopPct)
+ * shares = floor(riskBudgetValue / perShareRisk)
+ * return shares × entryPrice
+ */
+function computeRiskCappedValue(
+  riskBudgetValue: number,
+  entryPrice: number,
+  atr20: number,
+  stage: string,
+): number {
+  if (riskBudgetValue <= 0 || entryPrice <= 0) return 0;
+  const atrMultiplierMap: Record<string, number> = { winter: 2.5, spring: 2.0, summer: 2.0, autumn: 0 };
+  const minStopPctMap: Record<string, number>    = { winter: 0.08, spring: 0.05, summer: 0.05, autumn: 0 };
+  const multiplier  = atrMultiplierMap[stage] ?? 2.0;
+  const minStopPct  = minStopPctMap[stage]  ?? 0.07;
+  const perShareRisk = Math.max(multiplier * atr20, entryPrice * minStopPct);
+  if (perShareRisk <= 0) return 0;
+  const shares = Math.floor(riskBudgetValue / perShareRisk);
+  return shares * entryPrice;
+}
+
+// =============================================
 // Layer 3: 执行层 + 风险控制
 // =============================================
 
@@ -311,6 +413,11 @@ function getAction(
         notes.push("🌱 符合建仓条件");
         return { action: "enter", priority: 3, notes };
       } else {
+        // v3.1: 加仓需浮盈授权（Progressive Exposure）
+        if (pnlPct <= 0) {
+          notes.push("⏸ 持仓亏损中，暂缓加仓（浮盈授权未达）");
+          return { action: "hold", priority: 5, notes };
+        }
         notes.push("📈 符合加仓条件");
         return { action: "add", priority: 4, notes };
       }
@@ -338,9 +445,14 @@ export function computePortfolio(
   defaultQuotaPct: number,
   inputs: PositionInput[],
   classifications: Map<string, ClassificationResult>,
+  equityPeak?: number, // v3.1: 账户历史高点，用于计算组合回撤刹车
 ): PortfolioResult {
   // Layer 1
   const market = computeMarketContext(classifications);
+
+  // v3.1: 组合回撤计算
+  const peak = equityPeak && equityPeak > totalAssets ? equityPeak : totalAssets;
+  const portfolioDrawdownPct = Math.max(0, (peak - totalAssets) / peak);
 
   // Layer 2: compute each stock's target
   const singleNameSoftCap = totalAssets * 0.12;
@@ -374,6 +486,30 @@ export function computePortfolio(
       ? (input.currentPrice - input.costBasis) / input.costBasis * 100
       : 0;
 
+    // v3.1: 风险预算层
+    const wyckoffEvent: WyckoffEvent = input.wyckoffEvent ?? "none";
+    const effectiveSetupScore =
+      input.setupScore !== undefined
+        ? input.setupScore
+        : setupScoreFromConfidence(quantConfidence);
+    const riskBudgetValue = computeRiskBudget(
+      totalAssets,
+      market.regime,
+      effectiveSetupScore,
+      portfolioDrawdownPct,
+    );
+    const riskCappedValue = computeRiskCappedValue(
+      riskBudgetValue,
+      input.currentPrice,
+      input.atr20,
+      stage,
+    );
+    // drawdownFactor for display
+    const drawdownFactor =
+      portfolioDrawdownPct < 0.03 ? 1.0 :
+      portfolioDrawdownPct < 0.06 ? 0.75 :
+      portfolioDrawdownPct < 0.10 ? 0.5  : 0.25;
+
     // Risk thresholds
     let hardStopPct: number | null = null;
     let trailingStopPct: number | null = null;
@@ -406,6 +542,12 @@ export function computePortfolio(
       notes.unshift(seasonNotes[stage as Season] || "");
     }
 
+    // v3.1: allowedEntryValue = min(positionGap, riskCappedValue)
+    const positionGap = rawTarget - input.positionValue;
+    const allowedEntryValue = positionGap > 0
+      ? Math.min(positionGap, riskCappedValue)
+      : 0;
+
     rawResults.push({
       symbol: input.symbol,
       name: input.name,
@@ -420,7 +562,7 @@ export function computePortfolio(
       rawTargetValue: rawTarget,
       finalTargetValue: rawTarget, // will be adjusted below
       currentPositionValue: input.positionValue,
-      positionGap: rawTarget - input.positionValue,
+      positionGap,
       action,
       actionPriority: priority,
       notes,
@@ -429,6 +571,13 @@ export function computePortfolio(
       costBasis: input.costBasis,
       currentPrice: input.currentPrice,
       pnlPct,
+      // v3.1 fields
+      setupScore: effectiveSetupScore,
+      wyckoffEvent,
+      drawdownFactor,
+      riskBudgetValue,
+      riskCappedValue,
+      allowedEntryValue,
     });
   }
 
@@ -441,6 +590,10 @@ export function computePortfolio(
     for (const r of rawResults) {
       r.finalTargetValue = r.rawTargetValue * scale;
       r.positionGap = r.finalTargetValue - r.currentPositionValue;
+      // v3.1: 重新计算缩放后的 allowedEntryValue
+      r.allowedEntryValue = r.positionGap > 0
+        ? Math.min(r.positionGap, r.riskCappedValue)
+        : 0;
     }
   }
 
