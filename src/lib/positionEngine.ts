@@ -107,6 +107,7 @@ export interface StockPositionResult {
   springReleaseCap: number;
   executableTargetValue: number;
   // v3.1: 风险预算层
+  atr20: number;
   atrEnvFactor: number;
   drawdownFactor: number;
   riskBudgetValue: number;
@@ -726,6 +727,7 @@ export function computePortfolio(
       springReleaseCap,
       executableTargetValue,
       // v3.1 风险预算层
+      atr20: input.atr20,
       atrEnvFactor,
       drawdownFactor,
       riskBudgetValue,

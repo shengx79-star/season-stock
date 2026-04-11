@@ -681,85 +681,118 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
             outputValue={isExitScenario ? "减仓场景" : pos.allowedEntryValue > 0 ? formatMoney(pos.allowedEntryValue) : "—"}
             outputColor={isExitScenario ? "text-muted-foreground" : pos.allowedEntryValue > 0 ? "text-[hsl(var(--summer))]" : undefined}
           >
-            <div className="space-y-0.5">
-              <FlowItem label="基础风险% (baseRiskPct)" value={`${(baseRiskPct * 100).toFixed(2)}%`}
-                hint={`市场制度"${regimeLabels[regime]}"对应的基础单笔风险占比，决定这笔最多亏多少`} />
-              <FlowItem label="市场系数 (regimeFactor)" value={`×${regimeFactor}`}
-                hint="市场越弱，系数越低（健康多头1.0 → 严冬0.3），进一步压缩风险预算" />
-              <FlowItem label="ATR环境系数 (atrEnvFactor)" value={`×${pos.atrEnvFactor}`}
-                hint={pos.atrEnvFactor < 1.0 ? "近期波动异常放大，刹车减少预算" : "近期波动正常，系数=1.0"} />
-              <FlowItem label="回撤系数 (drawdownFactor)" value={`×${pos.drawdownFactor}`}
-                hint={pos.drawdownFactor < 1.0 ? "账户从高点回撤触发刹车（3%→0.75, 6%→0.5, 10%→0.25）" : "账户无明显回撤，系数=1.0"} />
-              <FlowItem label="质量系数 (setupFactor)" value={`×${setupFactor}`}
-                hint={setupFactor === 0 ? "评分≤1，信号无效，禁止开新仓" : `评分${pos.setupScore}/5 对应系数${setupFactor}（2→0.7, 3→1.0, 4→1.15, 5→1.25）`} />
-              <FormulaBlock
-                formula={`${formatMoney(totalAssets)} × ${(baseRiskPct*100).toFixed(2)}% × ${regimeFactor} × ${pos.atrEnvFactor} × ${pos.drawdownFactor} × ${setupFactor}`}
-                result={formatMoney(pos.riskBudgetValue)}
-              />
-              <FlowItem label="风险反推可买" value={isExitScenario ? "—" : formatMoney(pos.riskCappedValue)}
-                hint={isExitScenario ? "当前为减仓/退出场景，买入上限不适用" : "每股风险 = max(ATR×倍数, 价格×最小止损%)，最多股数 = 风险预算÷每股风险，再乘以价格"} />
-              {!isExitScenario && (
-                <details className="text-xs text-muted-foreground px-1 pb-1">
-                  <summary className="cursor-pointer text-foreground/60 hover:text-foreground/80 select-none py-0.5">
-                    风险反推详解 ▸
-                  </summary>
-                  <div className="mt-2 space-y-2.5 rounded-md bg-muted/50 border border-border/40 px-3 py-2">
-                    <p className="font-medium text-foreground/80">本质：先定止损，再算仓位</p>
+            {(() => {
+              const atrMultiplier = pos.stage === "winter" ? 2.5 : 2.0;
+              const minStopPct    = pos.stage === "winter" ? 0.08 : 0.05;
+              const perShareRisk  = Math.max(atrMultiplier * pos.atr20, pos.currentPrice * minStopPct);
+              const maxShares     = pos.riskBudgetValue > 0 && perShareRisk > 0
+                ? Math.floor(pos.riskBudgetValue / perShareRisk) : 0;
 
-                    <div className="space-y-1">
-                      <p className="font-medium text-foreground/70">① 每股最多亏多少（perShareRisk）</p>
-                      <p className="font-mono bg-background/60 rounded px-2 py-1">perShareRisk = max(ATR × 倍数, 价格 × 最小止损%)</p>
-                      <table className="mt-1 w-full text-[11px] border-collapse">
-                        <thead><tr className="text-foreground/50"><th className="text-left py-0.5 pr-4 font-medium">季节</th><th className="text-left py-0.5 pr-4 font-medium">ATR 倍数</th><th className="text-left py-0.5 font-medium">最小止损%</th></tr></thead>
-                        <tbody className="divide-y divide-border/30">
-                          <tr><td className="py-0.5 pr-4">冬季</td><td className="py-0.5 pr-4">2.5×</td><td className="py-0.5">8%</td></tr>
-                          <tr><td className="py-0.5 pr-4">春季</td><td className="py-0.5 pr-4">2.0×</td><td className="py-0.5">5%</td></tr>
-                          <tr><td className="py-0.5 pr-4">夏季</td><td className="py-0.5 pr-4">2.0×</td><td className="py-0.5">5%</td></tr>
-                        </tbody>
-                      </table>
-                      <p className="text-foreground/50">例：价格¥10，ATR=¥0.30（春季）→ max(0.30×2.0, 10×5%) = max(0.60, 0.50) = <span className="text-foreground/70 font-medium">¥0.60/股</span></p>
-                    </div>
+              return (
+                <div className="space-y-1">
 
-                    <div className="space-y-1">
-                      <p className="font-medium text-foreground/70">② 最多能买几股</p>
-                      <p className="font-mono bg-background/60 rounded px-2 py-1">股数 = floor(风险预算 ÷ perShareRisk)</p>
-                      <p className="text-foreground/50">例：风险预算¥1200 ÷ ¥0.60 = <span className="text-foreground/70 font-medium">2000 股</span></p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <p className="font-medium text-foreground/70">③ 换算成金额</p>
-                      <p className="font-mono bg-background/60 rounded px-2 py-1">风险反推可买 = 股数 × 当前价格</p>
-                      <p className="text-foreground/50">例：2000 × ¥10 = <span className="text-foreground/70 font-medium">¥20,000</span></p>
-                    </div>
-
-                    <div className="border-t border-border/40 pt-2 space-y-1">
-                      <p className="font-medium text-foreground/70">为什么用 ATR？</p>
-                      <p>ATR 反映真实波动幅度，低波动股自动买多、高波动股自动买少——触发止损时账户损失始终控制在同一风险预算内（风险对等）。</p>
-                      <p className="text-foreground/50 mt-1">最小止损% 是保底值，防止 ATR 极度压缩时止损过密被频繁扫出。</p>
-                    </div>
+                  {/* ─── 段 A：风险预算（最多亏多少） ─── */}
+                  <div className="flex items-center gap-2 pb-0.5">
+                    <span className="text-[11px] font-medium text-foreground/50 whitespace-nowrap">① 风险预算（最多亏多少）</span>
+                    <div className="flex-1 h-px bg-border/40" />
                   </div>
-                </details>
-              )}
-              {pos.liquidityCappedValue > 0 && (
-                <FlowItem label="流动性上限" value={formatMoney(pos.liquidityCappedValue)}
-                  hint="= 20日平均成交额 × 参与率(good:2%, fair:1%, poor:0.5%)，避免买太多导致滑点" />
-              )}
-              {pos.drawdownFactor < 1.0 && (
-                <FlowItem label="回撤刹车" value={`×${pos.drawdownFactor}`} color="text-[hsl(var(--autumn))]"
-                  hint={pos.drawdownFactor <= 0.25 ? "账户从高点跌超10%，强力刹车×0.25"
-                    : pos.drawdownFactor <= 0.5 ? "账户从高点跌6-10%，中度刹车×0.50"
-                    : "账户从高点跌3-6%，轻度刹车×0.75"} />
-              )}
-              <div className="border-t border-border/50 mt-1.5 pt-1.5">
-                <FlowItem
-                  label={isExitScenario ? "输出 → 买入上限" : "输出 → min(缺口, 风险反推, 流动性)"}
-                  value={isExitScenario ? "当前为减仓场景，买入上限不适用" : pos.allowedEntryValue > 0 ? formatMoney(pos.allowedEntryValue) : "—"}
-                  emphasis
-                  color={isExitScenario ? "text-muted-foreground" : pos.allowedEntryValue > 0 ? "text-[hsl(var(--summer))]" : undefined}
-                  hint={isExitScenario ? "仓位超出目标或触发止损/止盈，执行减仓操作，不需要买入上限" : "三者取最小值，确保每笔交易不超过风险和流动性限制"}
-                />
-              </div>
-            </div>
+                  <FlowItem label="基础风险% (baseRiskPct)" value={`${(baseRiskPct * 100).toFixed(2)}%`}
+                    hint={`市场制度"${regimeLabels[regime]}"对应的基础单笔风险占比`} />
+                  <FlowItem label="市场系数 (regimeFactor)" value={`×${regimeFactor}`}
+                    hint="市场越弱系数越低：健康多头1.0 → 严冬0.3" />
+                  <FlowItem label="ATR环境系数 (atrEnvFactor)" value={`×${pos.atrEnvFactor}`}
+                    color={pos.atrEnvFactor < 1.0 ? "text-[hsl(var(--autumn))]" : undefined}
+                    hint={pos.atrEnvFactor < 1.0 ? "近期波动异常放大，刹车减少预算" : "近期波动正常，系数=1.0"} />
+                  <FlowItem label="回撤系数 (drawdownFactor)" value={`×${pos.drawdownFactor}`}
+                    color={pos.drawdownFactor < 1.0 ? "text-[hsl(var(--autumn))]" : undefined}
+                    hint={pos.drawdownFactor < 1.0 ? "账户从高点回撤触发刹车（3%→0.75, 6%→0.5, 10%→0.25）" : "账户无明显回撤，系数=1.0"} />
+                  <FlowItem label="质量系数 (setupFactor)" value={`×${setupFactor}`}
+                    color={setupFactor < 1.0 ? "text-[hsl(var(--autumn))]" : setupFactor > 1.0 ? "text-[hsl(var(--summer))]" : undefined}
+                    hint={setupFactor === 0 ? "评分≤1，信号无效，禁止开新仓" : `评分${pos.setupScore}/5 对应系数${setupFactor}`} />
+                  <FormulaBlock
+                    formula={`${formatMoney(totalAssets)} × ${(baseRiskPct*100).toFixed(2)}% × ${regimeFactor} × ${pos.atrEnvFactor} × ${pos.drawdownFactor} × ${setupFactor}`}
+                    result={`${formatMoney(pos.riskBudgetValue)}（最大亏损限额）`}
+                  />
+
+                  {/* ─── 段 B：反推可买金额 ─── */}
+                  {isExitScenario ? (
+                    <div className="flex items-center gap-2 py-0.5">
+                      <span className="text-[11px] font-medium text-foreground/50 whitespace-nowrap">② 反推可买金额</span>
+                      <div className="flex-1 h-px bg-border/40" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 py-0.5">
+                        <span className="text-[11px] font-medium text-foreground/50 whitespace-nowrap">② 反推可买金额（亏损限额 → 股数 → 金额）</span>
+                        <div className="flex-1 h-px bg-border/40" />
+                      </div>
+                      <FlowItem
+                        label={`每股风险 = max(ATR×${atrMultiplier}, 价格×${(minStopPct*100).toFixed(0)}%)`}
+                        value={`¥${perShareRisk.toFixed(2)}/股`}
+                        hint={`max(${pos.atr20.toFixed(2)}×${atrMultiplier}=¥${(pos.atr20*atrMultiplier).toFixed(2)}, ¥${pos.currentPrice.toFixed(2)}×${(minStopPct*100).toFixed(0)}%=¥${(pos.currentPrice*minStopPct).toFixed(2)})`}
+                      />
+                      <FlowItem
+                        label={`最多股数 = floor(${formatMoney(pos.riskBudgetValue)} ÷ ¥${perShareRisk.toFixed(2)})`}
+                        value={`${maxShares.toLocaleString()} 股`}
+                        hint="用最大亏损限额除以每股风险，向下取整"
+                      />
+                      <FlowItem
+                        label={`风险反推可买 = ${maxShares.toLocaleString()} × ¥${pos.currentPrice.toFixed(2)}`}
+                        value={formatMoney(pos.riskCappedValue)}
+                        hint="最多股数乘以当前股价，得到可买金额上限"
+                      />
+                      <details className="text-xs text-muted-foreground px-1">
+                        <summary className="cursor-pointer text-foreground/60 hover:text-foreground/80 select-none py-0.5">
+                          为什么用 ATR 而不是固定止损%？ ▸
+                        </summary>
+                        <div className="mt-1.5 rounded-md bg-muted/50 border border-border/40 px-3 py-2 space-y-1.5">
+                          <p>ATR 反映真实波动幅度，低波动股自动买多、高波动股自动买少——触发止损时账户损失始终控制在同一风险预算内（风险对等）。</p>
+                          <p className="text-foreground/50">最小止损% 是保底值，防止 ATR 极度压缩时止损过密被频繁扫出。</p>
+                          <table className="mt-1 w-full text-[11px] border-collapse">
+                            <thead><tr className="text-foreground/50"><th className="text-left py-0.5 pr-4 font-medium">季节</th><th className="text-left py-0.5 pr-4 font-medium">ATR 倍数</th><th className="text-left py-0.5 font-medium">最小止损%</th></tr></thead>
+                            <tbody className="divide-y divide-border/30">
+                              <tr><td className="py-0.5 pr-4">冬季</td><td className="py-0.5 pr-4">2.5×</td><td className="py-0.5">8%</td></tr>
+                              <tr><td className="py-0.5 pr-4">春/夏季</td><td className="py-0.5 pr-4">2.0×</td><td className="py-0.5">5%</td></tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    </>
+                  )}
+
+                  {/* ─── 段 C：三者取最小 ─── */}
+                  <div className="flex items-center gap-2 py-0.5">
+                    <span className="text-[11px] font-medium text-foreground/50 whitespace-nowrap">③ 最终可买（三者取最小）</span>
+                    <div className="flex-1 h-px bg-border/40" />
+                  </div>
+                  {isExitScenario ? (
+                    <FlowItem label="买入上限" value="当前为减仓场景，不适用"
+                      color="text-muted-foreground"
+                      hint="仓位超出目标或触发止损/止盈，执行减仓操作，不需要计算买入上限" />
+                  ) : (
+                    <>
+                      <FlowItem label="目标缺口" value={pos.positionGap > 0 ? formatMoney(pos.positionGap) : "—"}
+                        hint="可执行目标仓位 − 当前持仓，即还需要买多少才到目标" />
+                      <FlowItem label="风险反推可买" value={formatMoney(pos.riskCappedValue)}
+                        hint="由段②得出" />
+                      {pos.liquidityCappedValue > 0 && (
+                        <FlowItem label="流动性上限" value={formatMoney(pos.liquidityCappedValue)}
+                          hint="= 20日均成交额 × 参与率（good:2%, fair:1%, poor:0.5%），避免冲击市场" />
+                      )}
+                      <div className="border-t border-border/50 mt-1 pt-1">
+                        <FlowItem
+                          label="本笔可买 = min(三者)"
+                          value={pos.allowedEntryValue > 0 ? formatMoney(pos.allowedEntryValue) : "—"}
+                          emphasis
+                          color={pos.allowedEntryValue > 0 ? "text-[hsl(var(--summer))]" : undefined}
+                          hint="取最保守的那个：想买多少、风险允许多少、流动性能消化多少"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </LayerStep>
 
           {/* Layer 4: 执行层 */}
