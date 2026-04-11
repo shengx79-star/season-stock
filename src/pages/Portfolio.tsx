@@ -741,22 +741,6 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
                         value={formatMoney(pos.riskCappedValue)}
                         hint="最多股数乘以当前股价，得到可买金额上限"
                       />
-                      <details className="text-xs text-muted-foreground px-1">
-                        <summary className="cursor-pointer text-foreground/60 hover:text-foreground/80 select-none py-0.5">
-                          为什么用 ATR 而不是固定止损%？ ▸
-                        </summary>
-                        <div className="mt-1.5 rounded-md bg-muted/50 border border-border/40 px-3 py-2 space-y-1.5">
-                          <p>ATR 反映真实波动幅度，低波动股自动买多、高波动股自动买少——触发止损时账户损失始终控制在同一风险预算内（风险对等）。</p>
-                          <p className="text-foreground/50">最小止损% 是保底值，防止 ATR 极度压缩时止损过密被频繁扫出。</p>
-                          <table className="mt-1 w-full text-[11px] border-collapse">
-                            <thead><tr className="text-foreground/50"><th className="text-left py-0.5 pr-4 font-medium">季节</th><th className="text-left py-0.5 pr-4 font-medium">ATR 倍数</th><th className="text-left py-0.5 font-medium">最小止损%</th></tr></thead>
-                            <tbody className="divide-y divide-border/30">
-                              <tr><td className="py-0.5 pr-4">冬季</td><td className="py-0.5 pr-4">2.5×</td><td className="py-0.5">8%</td></tr>
-                              <tr><td className="py-0.5 pr-4">春/夏季</td><td className="py-0.5 pr-4">2.0×</td><td className="py-0.5">5%</td></tr>
-                            </tbody>
-                          </table>
-                        </div>
-                      </details>
                     </>
                   )}
 
