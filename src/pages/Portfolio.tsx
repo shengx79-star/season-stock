@@ -290,7 +290,7 @@ const Portfolio = () => {
                   sortBy === key ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground"
                 }`}>
                 {key === "value" ? "总价" : "盈亏"}
-                {sortBy === key && <span className="text-[9px]">{sortDesc ? "↓" : "↑"}</span>}
+                <span className="text-[9px] opacity-60">{sortBy === key ? (sortDesc ? "↓" : "↑") : "↕"}</span>
               </button>
             ))}
           </div>
