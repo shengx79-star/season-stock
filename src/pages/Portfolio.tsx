@@ -7,7 +7,6 @@ import {
   computeATR20,
   computeATREnvFactor,
   computeADV20Value,
-  computeMarketContext,
   regimeLabels,
   type PositionInput,
   type StockPositionResult,
@@ -81,11 +80,13 @@ const Portfolio = () => {
 
   const portfolio = useMemo(() => {
     if (!config || portfolioStocks.length === 0) return null;
-    const result = computePortfolio(config.totalAssets, config.defaultQuotaPct, positionInputs, classifications);
-    if (allClassifications.size > 0) {
-      result.market = computeMarketContext(allClassifications);
-    }
-    return result;
+    // 市场层用全量股票（allClassifications）保证与 UI 展示一致
+    // 个股数据仍用持仓股票（classifications）
+    return computePortfolio(
+      config.totalAssets, config.defaultQuotaPct, positionInputs, classifications,
+      undefined,
+      allClassifications.size > 0 ? allClassifications : undefined,
+    );
   }, [config, positionInputs, classifications, allClassifications, portfolioStocks.length]);
 
   useEffect(() => {

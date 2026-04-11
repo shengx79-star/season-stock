@@ -558,9 +558,12 @@ export function computePortfolio(
   inputs: PositionInput[],
   classifications: Map<string, ClassificationResult>,
   equityPeak?: number, // v3.1: 账户历史高点，用于计算组合回撤刹车
+  marketClassifications?: Map<string, ClassificationResult>, // 全量股票，用于市场层（不传时退化为 classifications）
 ): PortfolioResult {
-  // Layer 1
-  const market = computeMarketContext(classifications);
+  // Layer 1: 用全量股票（若有）计算市场制度，确保与 UI 展示一致
+  const market = computeMarketContext(
+    marketClassifications && marketClassifications.size > 0 ? marketClassifications : classifications
+  );
 
   // v3.1: 组合回撤计算
   const peak = equityPeak && equityPeak > totalAssets ? equityPeak : totalAssets;
