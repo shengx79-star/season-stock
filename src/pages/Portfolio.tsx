@@ -250,7 +250,7 @@ const Portfolio = () => {
           {/* Filter chips */}
           <div className="px-3 py-2 border-b border-border flex flex-wrap gap-1.5">
             {(["all", "A", "HK", "US"] as const).map((m) => (
-              <button key={m} onClick={() => setFilterMarket(m)}
+              <button key={m} onClick={() => setFilterMarket(filterMarket === m && m !== "all" ? "all" : m)}
                 className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
                   filterMarket === m ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground"
                 }`}>
@@ -259,7 +259,7 @@ const Portfolio = () => {
             ))}
             <div className="w-px bg-border self-stretch mx-0.5" />
             {(["all", "spring", "summer", "autumn", "winter"] as const).map((s) => (
-              <button key={s} onClick={() => setFilterSeason(s)}
+              <button key={s} onClick={() => setFilterSeason(filterSeason === s && s !== "all" ? "all" : s)}
                 className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
                   filterSeason === s
                     ? s === "all" ? "bg-primary text-primary-foreground"
