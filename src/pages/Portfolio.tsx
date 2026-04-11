@@ -59,6 +59,8 @@ const Portfolio = () => {
   const [posForm, setPosForm] = useState({ positionValue: "", costBasis: "", shares: "", quotaValue: "" });
   const [filterMarket, setFilterMarket] = useState<"all" | "A" | "HK" | "US">("all");
   const [filterSeason, setFilterSeason] = useState<"all" | "spring" | "summer" | "autumn" | "winter">("all");
+  const [sortBy, setSortBy] = useState<"default" | "value" | "pnl">("default");
+  const [sortDesc, setSortDesc] = useState(true);
 
   const positionInputs: PositionInput[] = useMemo(() => {
     return portfolioStocks.map((stock) => {
@@ -147,12 +149,20 @@ const Portfolio = () => {
 
   const filteredPositions = useMemo(() => {
     if (!portfolio) return [];
-    return portfolio.positions.filter((pos) => {
+    const filtered = portfolio.positions.filter((pos) => {
       if (filterMarket !== "all" && detectMarket(pos.symbol) !== filterMarket) return false;
       if (filterSeason !== "all" && pos.stage !== filterSeason) return false;
       return true;
     });
-  }, [portfolio, filterMarket, filterSeason]);
+    if (sortBy !== "default") {
+      filtered.sort((a, b) => {
+        const va = sortBy === "value" ? a.currentPositionValue : a.pnlPct;
+        const vb = sortBy === "value" ? b.currentPositionValue : b.pnlPct;
+        return sortDesc ? vb - va : va - vb;
+      });
+    }
+    return filtered;
+  }, [portfolio, filterMarket, filterSeason, sortBy, sortDesc]);
 
   if (portfolioLoading) {
     return (
@@ -247,7 +257,7 @@ const Portfolio = () => {
             </div>
           )}
 
-          {/* Filter chips */}
+          {/* Filter & sort chips */}
           <div className="px-3 py-2 border-b border-border flex flex-wrap gap-1.5">
             {(["A", "HK", "US"] as const).map((m) => (
               <button key={m} onClick={() => setFilterMarket(filterMarket === m ? "all" : m)}
@@ -266,6 +276,21 @@ const Portfolio = () => {
                     : "bg-secondary text-muted-foreground hover:text-foreground"
                 }`}>
                 {seasonEmojis[s]}
+              </button>
+            ))}
+            <div className="w-px bg-border self-stretch mx-0.5" />
+            {(["value", "pnl"] as const).map((key) => (
+              <button key={key} onClick={() => {
+                if (sortBy === key) {
+                  if (sortDesc) setSortDesc(false);
+                  else { setSortBy("default"); setSortDesc(true); }
+                } else { setSortBy(key); setSortDesc(true); }
+              }}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-0.5 ${
+                  sortBy === key ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground"
+                }`}>
+                {key === "value" ? "总价" : "盈亏"}
+                {sortBy === key && <span className="text-[9px]">{sortDesc ? "↓" : "↑"}</span>}
               </button>
             ))}
           </div>
