@@ -387,11 +387,16 @@ function LayerStep({
   );
 }
 
-function FlowItem({ label, value, color, emphasis }: { label: string; value: string; color?: string; emphasis?: boolean }) {
+function FlowItem({ label, value, color, emphasis, hint }: { label: string; value: string; color?: string; emphasis?: boolean; hint?: string }) {
   return (
-    <div className="flex items-center justify-between py-1">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
-      <span className={`text-xs font-medium ${emphasis ? "font-bold" : ""} ${color || ""}`}>{value}</span>
+    <div className="py-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-muted-foreground">{label}</span>
+        <span className={`text-xs font-medium ${emphasis ? "font-bold" : ""} ${color || ""}`}>{value}</span>
+      </div>
+      {hint && (
+        <p className="text-[10px] text-muted-foreground/70 mt-0.5 leading-snug pl-0.5">{hint}</p>
+      )}
     </div>
   );
 }
@@ -488,19 +493,31 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
             <LayerStep
               layerNum="L1"
               title="市场层 · Market Context"
-              subtitle="根据全市场四季分布确定总仓位上限"
+              subtitle="今天整个组合最多能有多少仓位？用股票池所有股票的四季分布判断大环境"
               outputLabel="仓位上限"
               outputValue={`${Math.round(portfolioCap * 100)}%`}
               outputColor="text-primary"
             >
               <div className="space-y-0.5">
-                <FlowItem label="市场状态" value={regimeLabels[market.regime]} />
-                <FlowItem label={`水温 ${Math.round(market.temperature)}°`} value={`冬${(market.winterShare*100).toFixed(0)}% 春${(market.springShare*100).toFixed(0)}% 夏${(market.summerShare*100).toFixed(0)}% 秋${(market.autumnShare*100).toFixed(0)}%`} />
-                <FlowItem label="多头强度 (strength)" value={market.strength.toFixed(2)} />
-                <FlowItem label="脆弱度 (fragility)" value={market.fragility.toFixed(2)} />
-                <FlowItem label="避险度 (riskOff)" value={market.riskOff.toFixed(2)} />
+                <FlowItem label="市场状态" value={regimeLabels[market.regime]}
+                  hint={market.regime === "severe_winter" ? "超过50%股票在冬季 → 严冬，大幅限制仓位"
+                    : market.regime === "healthy_bull" ? "夏/春占比强且秋季少 → 健康多头，可大胆配置"
+                    : market.regime === "overheated" ? "夏/春强但秋季也多 → 过热脆弱，需警惕"
+                    : market.regime === "neutral_bull" ? "夏/春中等水平 → 中性偏多，稳健配置"
+                    : market.regime === "weakening" ? "冬+秋双高 → 市场转弱，收缩仓位"
+                    : "其他情况 → 温和市场，适度参与"} />
+                <FlowItem label={`水温 ${Math.round(market.temperature)}°`}
+                  value={`冬${(market.winterShare*100).toFixed(0)}% 春${(market.springShare*100).toFixed(0)}% 夏${(market.summerShare*100).toFixed(0)}% 秋${(market.autumnShare*100).toFixed(0)}%`}
+                  hint="水温 = 10×冬占比 + 40×春占比 + 80×夏占比 + 60×秋占比" />
+                <FlowItem label="多头强度 (strength)" value={market.strength.toFixed(2)}
+                  hint="= 0.5×春占比 + 1.0×夏占比，越高市场越强" />
+                <FlowItem label="脆弱度 (fragility)" value={market.fragility.toFixed(2)}
+                  hint="= 1.0×秋占比，秋季股票越多市场越脆弱" />
+                <FlowItem label="避险度 (riskOff)" value={market.riskOff.toFixed(2)}
+                  hint="= 1.0×冬占比，冬季股票过半将判定严冬" />
                 <div className="border-t border-border/50 mt-1.5 pt-1.5">
-                  <FlowItem label="输出 → 组合仓位上限" value={`${Math.round(portfolioCap * 100)}%`} emphasis color="text-primary" />
+                  <FlowItem label="输出 → 组合仓位上限" value={`${Math.round(portfolioCap * 100)}%`} emphasis color="text-primary"
+                    hint={`所有股票目标仓位之和不能超过总资产的${Math.round(portfolioCap * 100)}%，超出部分按比例缩放`} />
                 </div>
               </div>
             </LayerStep>
@@ -510,25 +527,39 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
           <LayerStep
             layerNum="L2"
             title="个股层 · Target Position"
-            subtitle="配额 × 季节系数 × 置信度 × 波动 × 冲突 × 流动性"
+            subtitle="这只股票理论上该配多少钱？"
             outputLabel="原始目标"
             outputValue={formatMoney(pos.rawTargetValue)}
             defaultOpen
           >
             <div className="space-y-0.5">
-              <FlowItem label="有效配额" value={formatMoney(pos.effectiveQuota)} />
-              <FlowItem label={`季节系数 (${pos.stage})`} value={`×${pos.stageCoeff}`} />
-              <FlowItem label={`置信度系数 (conf=${(pos.quantConfidence*100).toFixed(0)}%)`} value={`×${pos.confidenceCoeff.toFixed(2)}`} />
-              <FlowItem label="波动因子" value={`×${pos.volatilityFactor.toFixed(2)}`} />
-              <FlowItem label="周日冲突因子" value={`×${pos.conflictFactor}`} />
-              <FlowItem label="流动性因子" value={`×${pos.liquidityFactor}`} />
+              <FlowItem label="有效配额" value={formatMoney(pos.effectiveQuota)}
+                hint="= min(个股配额, 总资产×12%)，单只股票最高软上限12%" />
+              <FlowItem label={`季节系数 (${pos.stage})`} value={`×${pos.stageCoeff}`}
+                hint={pos.stage === "winter" ? "冬季0.15：小仓试错，最多配15%配额"
+                  : pos.stage === "spring" ? "春季0.45：启动建仓，配45%配额"
+                  : pos.stage === "summer" ? "夏季0.75：主仓持有，配75%配额"
+                  : pos.stage === "autumn" ? "秋季0.00：目标清零，强制退出"
+                  : "未知季节，系数为0"} />
+              <FlowItem label={`置信度系数 (conf=${(pos.quantConfidence*100).toFixed(0)}%)`} value={`×${pos.confidenceCoeff.toFixed(2)}`}
+                hint="分类引擎越确定，系数越高（0.4~1.0），公式：clamp(0.35+0.9×conf, 0.4, 1.0)" />
+              <FlowItem label="波动因子" value={`×${pos.volatilityFactor.toFixed(2)}`}
+                hint={pos.volatilityFactor >= 1.0 ? "ATR%≤2%，波动正常，不打折"
+                  : pos.volatilityFactor >= 0.85 ? "ATR% 2-4%，波动偏大，打85折"
+                  : pos.volatilityFactor >= 0.70 ? "ATR% 4-6%，波动较大，打7折"
+                  : "ATR%>6%，波动极大，打5折"} />
+              <FlowItem label="周日冲突因子" value={`×${pos.conflictFactor}`}
+                hint={pos.conflictFactor < 1.0 ? "周线和日线信号打架，打八折（0.8）" : "周线日线方向一致，不打折"} />
+              <FlowItem label="流动性因子" value={`×${pos.liquidityFactor}`}
+                hint="成交量好=1.0, 一般=0.8, 差=0.5, 无=0（不可交易）" />
               <FormulaBlock
                 formula={`${formatMoney(pos.effectiveQuota)} × ${pos.stageCoeff} × ${pos.confidenceCoeff.toFixed(2)} × ${pos.volatilityFactor.toFixed(2)} × ${pos.conflictFactor} × ${pos.liquidityFactor}`}
                 result={formatMoney(pos.rawTargetValue)}
               />
               {pos.rawTargetValue !== pos.finalTargetValue && (
                 <div className="border-t border-border/50 mt-1.5 pt-1.5">
-                  <FlowItem label="经组合缩放后" value={formatMoney(pos.finalTargetValue)} emphasis color="text-primary" />
+                  <FlowItem label="经组合缩放后" value={formatMoney(pos.finalTargetValue)} emphasis color="text-primary"
+                    hint={`所有股票原始目标之和超过市场层上限(${Math.round(portfolioCap * 100)}%)，按比例同步缩小`} />
                 </div>
               )}
             </div>
@@ -538,28 +569,43 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
           <LayerStep
             layerNum="2.5"
             title="Setup 质量层"
-            subtitle="春季先锋/确认仓 · ATR 环境刹车"
+            subtitle="这次信号质量如何？春季该先锋仓还是满仓？"
             outputLabel="可执行目标"
             outputValue={formatMoney(pos.executableTargetValue)}
             outputColor={pos.executableTargetValue < pos.rawTargetValue ? "text-[hsl(var(--autumn))]" : undefined}
           >
             <div className="space-y-0.5">
-              <FlowItem label="Setup 评分" value={`${pos.setupScore}/5`} />
+              <FlowItem label="Setup 评分" value={`${pos.setupScore}/5`}
+                hint={pos.setupScore <= 1 ? "0-1分=无效信号，禁止开仓（风险预算系数=0）"
+                  : pos.setupScore === 2 ? "2分=弱信号，风险预算打7折"
+                  : pos.setupScore === 3 ? "3分=正常信号，标准风险预算"
+                  : pos.setupScore === 4 ? "4分=强信号，风险预算×1.15"
+                  : "5分=极强信号，风险预算×1.25"} />
               {pos.springEntryPhase && (
                 <FlowItem
                   label="春季阶段"
                   value={pos.springEntryPhase === "pilot" ? "先锋仓 → 释放40%" : "确认仓 → 释放100%"}
                   color={pos.springEntryPhase === "confirmed" ? "text-[hsl(var(--summer))]" : "text-[hsl(var(--autumn))]"}
+                  hint={pos.springEntryPhase === "pilot"
+                    ? "春季早期不一下打满，先用40%试水。升级到确认仓需要：评分≥3 + 无周日冲突 + (upTurn≥2 或 已浮盈)"
+                    : "信号已确认，允许释放全量目标仓位"}
                 />
               )}
               {pos.springEntryPhase && (
-                <FlowItem label="释放上限" value={formatMoney(pos.springReleaseCap)} />
+                <FlowItem label="释放上限" value={formatMoney(pos.springReleaseCap)}
+                  hint={pos.springEntryPhase === "pilot" ? "= 原始目标 × 40%，等市场证明你对了再释放剩余" : "= 原始目标 × 100%"} />
               )}
               {pos.atrEnvFactor < 1.0 && (
-                <FlowItem label="ATR 环境刹车" value={`×${pos.atrEnvFactor}`} color="text-[hsl(var(--autumn))]" />
+                <FlowItem label="ATR 环境刹车" value={`×${pos.atrEnvFactor}`} color="text-[hsl(var(--autumn))]"
+                  hint={pos.atrEnvFactor <= 0.65 ? "近期波动比历史高1.3倍以上，强制刹车×0.65" : "近期波动偏高(1.0~1.3倍)，轻度刹车×0.85"} />
+              )}
+              {pos.atrEnvFactor >= 1.0 && (
+                <FlowItem label="ATR 环境刹车" value="未触发"
+                  hint="近期波动在正常范围内，不需要刹车" />
               )}
               <div className="border-t border-border/50 mt-1.5 pt-1.5">
-                <FlowItem label="输出 → 可执行目标仓位" value={formatMoney(pos.executableTargetValue)} emphasis />
+                <FlowItem label="输出 → 可执行目标仓位" value={formatMoney(pos.executableTargetValue)} emphasis
+                  hint="这是经过质量过滤后真正可以执行的目标仓位" />
               </div>
             </div>
           </LayerStep>
@@ -568,19 +614,25 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
           <LayerStep
             layerNum="L3"
             title="风险预算层 · Risk Budget"
-            subtitle="单笔交易最大可买金额"
+            subtitle="这一笔最多能买多少？用可承受亏损反推最多能买多少"
             outputLabel="本笔可买"
             outputValue={pos.allowedEntryValue > 0 ? formatMoney(pos.allowedEntryValue) : "—"}
             outputColor={pos.allowedEntryValue > 0 ? "text-[hsl(var(--summer))]" : undefined}
           >
             <div className="space-y-0.5">
-              <FlowItem label="风险预算" value={formatMoney(pos.riskBudgetValue)} />
-              <FlowItem label="风险反推可买" value={formatMoney(pos.riskCappedValue)} />
+              <FlowItem label="风险预算" value={formatMoney(pos.riskBudgetValue)}
+                hint="= 总资产 × 基础风险% × 市场系数 × ATR环境系数 × 回撤系数 × 质量系数。这笔交易最多允许亏这么多钱" />
+              <FlowItem label="风险反推可买" value={formatMoney(pos.riskCappedValue)}
+                hint="每股风险 = max(ATR×倍数, 价格×最小止损%)，最多股数 = 风险预算÷每股风险，再乘以价格" />
               {pos.liquidityCappedValue > 0 && (
-                <FlowItem label="流动性上限" value={formatMoney(pos.liquidityCappedValue)} />
+                <FlowItem label="流动性上限" value={formatMoney(pos.liquidityCappedValue)}
+                  hint="= 20日平均成交额 × 参与率(good:2%, fair:1%, poor:0.5%)，避免买太多导致滑点" />
               )}
               {pos.drawdownFactor < 1.0 && (
-                <FlowItem label="回撤刹车" value={`×${pos.drawdownFactor}`} color="text-[hsl(var(--autumn))]" />
+                <FlowItem label="回撤刹车" value={`×${pos.drawdownFactor}`} color="text-[hsl(var(--autumn))]"
+                  hint={pos.drawdownFactor <= 0.25 ? "账户从高点跌超10%，强力刹车×0.25"
+                    : pos.drawdownFactor <= 0.5 ? "账户从高点跌6-10%，中度刹车×0.50"
+                    : "账户从高点跌3-6%，轻度刹车×0.75"} />
               )}
               <div className="border-t border-border/50 mt-1.5 pt-1.5">
                 <FlowItem
@@ -588,6 +640,7 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
                   value={pos.allowedEntryValue > 0 ? formatMoney(pos.allowedEntryValue) : "—"}
                   emphasis
                   color={pos.allowedEntryValue > 0 ? "text-[hsl(var(--summer))]" : undefined}
+                  hint="三者取最小值，确保每笔交易不超过风险和流动性限制"
                 />
               </div>
             </div>
@@ -597,25 +650,36 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
           <LayerStep
             layerNum="L4"
             title="执行层 · Execution"
-            subtitle="综合判断操作建议与风控"
+            subtitle="最终动作：建仓/加仓/持有/减仓/清仓"
             outputLabel="操作"
             outputValue={actionLabels[pos.action]}
             outputColor={pos.action === "enter" || pos.action === "add" ? "text-[hsl(var(--summer))]" : pos.action === "hold" ? "text-muted-foreground" : "text-destructive"}
           >
             <div className="space-y-0.5">
-              <FlowItem label="操作建议" value={actionLabels[pos.action]} emphasis />
-              <FlowItem label="优先级" value={`${pos.actionPriority}`} />
+              <FlowItem label="操作建议" value={actionLabels[pos.action]} emphasis
+                hint={pos.action === "force_exit" ? "硬止损触发，必须立即清仓（优先级最高）"
+                  : pos.action === "reduce" ? "仓位超出目标或出现转弱信号，需要减仓"
+                  : pos.action === "exit_autumn" ? "秋季目标仓位为零，执行退出"
+                  : pos.action === "take_profit" ? "夏季从最高收盘价回撤超过跟踪止盈线"
+                  : pos.action === "enter" ? "新建仓位，符合进场条件"
+                  : pos.action === "add" ? "已有浮盈，符合加仓条件（浮盈授权）"
+                  : "维持现状，等待更好的信号"} />
+              <FlowItem label="优先级" value={`${pos.actionPriority}`}
+                hint="0=最紧急(止损) → 5=最不急(持有)，数字越小越优先执行" />
               {pos.hardStopPct != null && (
-                <FlowItem label="硬止损" value={`-${pos.hardStopPct.toFixed(1)}%`} color="text-destructive" />
+                <FlowItem label="硬止损" value={`-${pos.hardStopPct.toFixed(1)}%`} color="text-destructive"
+                  hint={pos.stage === "winter" ? "冬季止损 = max(8%, 2.5×ATR%)，范围8%-12%" : "春季止损 = max(5%, 2.0×ATR%)，范围5%-10%"} />
               )}
               {pos.trailingStopPct != null && (
-                <FlowItem label="跟踪止盈" value={`-${pos.trailingStopPct.toFixed(1)}%`} color="text-[hsl(var(--autumn))]" />
+                <FlowItem label="跟踪止盈" value={`-${pos.trailingStopPct.toFixed(1)}%`} color="text-[hsl(var(--autumn))]"
+                  hint="从持仓以来最高收盘价回撤此比例触发止盈，= max(8%, 2.5×ATR%)" />
               )}
               {pos.costBasis > 0 && (
                 <FlowItem
                   label="当前盈亏"
                   value={`${pos.pnlPct > 0 ? "+" : ""}${pos.pnlPct.toFixed(2)}%`}
                   color={pos.pnlPct > 0 ? "text-[hsl(var(--summer))]" : pos.pnlPct < 0 ? "text-destructive" : undefined}
+                  hint={pos.pnlPct > 0 ? "持仓盈利中，满足加仓的浮盈授权条件" : pos.pnlPct < 0 ? "持仓亏损中，即使有加仓空间也暂缓（浮盈授权未达）" : "持仓持平"}
                 />
               )}
             </div>
