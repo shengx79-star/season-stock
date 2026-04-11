@@ -430,8 +430,11 @@ interface DetailPanelProps {
 }
 
 function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSave, onCancel, onFormChange, onDelete, onRemoveFromPortfolio }: DetailPanelProps) {
-  const positionPct = totalAssets > 0 ? (pos.currentPositionValue / totalAssets * 100) : 0;
-  const targetPct = totalAssets > 0 ? (pos.finalTargetValue / totalAssets * 100) : 0;
+  const quota = pos.effectiveQuota > 0 ? pos.effectiveQuota : totalAssets;
+  const positionPct = quota > 0 ? (pos.currentPositionValue / quota * 100) : 0;
+  const targetPct   = quota > 0 ? (pos.finalTargetValue   / quota * 100) : 0;
+  const positionTotalPct = totalAssets > 0 ? (pos.currentPositionValue / totalAssets * 100) : 0;
+  const targetTotalPct   = totalAssets > 0 ? (pos.finalTargetValue   / totalAssets * 100) : 0;
   const portfolioCap = market?.portfolioCap ?? 0;
 
   // P0: 风险预算各因子（与 positionEngine.ts 保持同步）
@@ -500,7 +503,7 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
           <span>差额: <span className={`font-medium ${pos.positionGap > 0 ? "text-[hsl(var(--summer))]" : pos.positionGap < 0 ? "text-[hsl(var(--spring))]" : ""}`}>
             {pos.positionGap > 0 ? "+" : ""}{formatMoney(pos.positionGap)}
           </span></span>
-          <span>占总资产 {targetPct.toFixed(1)}%</span>
+          <span>占配额 {targetPct.toFixed(1)}% · 占总资产 {targetTotalPct.toFixed(1)}%</span>
         </div>
       </div>
 
