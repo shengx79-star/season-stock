@@ -621,11 +621,11 @@ function DetailPanel({ pos, editing, posForm, totalAssets, defaultQuotaPct, mark
           >
             <div className="space-y-0.5">
               <FlowItem label="Setup 评分" value={`${pos.setupScore}/5`}
-                hint={pos.setupScore <= 1 ? "0-1分=无效信号，禁止开仓（风险预算系数=0）"
-                  : pos.setupScore === 2 ? "2分=弱信号，风险预算打7折"
-                  : pos.setupScore === 3 ? "3分=正常信号，标准风险预算"
-                  : pos.setupScore === 4 ? "4分=强信号，风险预算×1.15"
-                  : "5分=极强信号，风险预算×1.25"} />
+                hint={pos.setupScore <= 1 ? "0-1分=无效信号，L3 风险预算系数=0（禁止买入）"
+                  : pos.setupScore === 2 ? "2分=弱信号，L3 风险预算 ×0.7（买入上限缩减）"
+                  : pos.setupScore === 3 ? "3分=正常信号，L3 风险预算 ×1.0"
+                  : pos.setupScore === 4 ? "4分=强信号，L3 风险预算 ×1.15"
+                  : "5分=极强信号，L3 风险预算 ×1.25"} />
               {pos.springEntryPhase && (
                 <FlowItem
                   label="春季阶段"
@@ -640,17 +640,9 @@ function DetailPanel({ pos, editing, posForm, totalAssets, defaultQuotaPct, mark
                 <FlowItem label="释放上限" value={formatMoney(pos.springReleaseCap)}
                   hint={pos.springEntryPhase === "pilot" ? "= 原始目标 × 40%，等市场证明你对了再释放剩余" : "= 原始目标 × 100%"} />
               )}
-              {pos.atrEnvFactor < 1.0 && (
-                <FlowItem label="ATR 环境刹车" value={`×${pos.atrEnvFactor}`} color="text-[hsl(var(--autumn))]"
-                  hint={pos.atrEnvFactor <= 0.65 ? "近期波动比历史高1.3倍以上，强制刹车×0.65" : "近期波动偏高(1.0~1.3倍)，轻度刹车×0.85"} />
-              )}
-              {pos.atrEnvFactor >= 1.0 && (
-                <FlowItem label="ATR 环境刹车" value="未触发"
-                  hint="近期波动在正常范围内，不需要刹车" />
-              )}
               <div className="border-t border-border/50 mt-1.5 pt-1.5">
                 <FlowItem label="输出 → 可执行目标仓位" value={formatMoney(pos.executableTargetValue)} emphasis
-                  hint="这是经过质量过滤后真正可以执行的目标仓位" />
+                  hint="长期持仓目标，不受单次波动影响；ATR 环境系数在 L3 风险预算层生效，控制每笔订单买入上限" />
               </div>
             </div>
           </LayerStep>
