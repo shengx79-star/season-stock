@@ -698,6 +698,48 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
               />
               <FlowItem label="风险反推可买" value={isExitScenario ? "—" : formatMoney(pos.riskCappedValue)}
                 hint={isExitScenario ? "当前为减仓/退出场景，买入上限不适用" : "每股风险 = max(ATR×倍数, 价格×最小止损%)，最多股数 = 风险预算÷每股风险，再乘以价格"} />
+              {!isExitScenario && (
+                <details className="text-xs text-muted-foreground px-1 pb-1">
+                  <summary className="cursor-pointer text-foreground/60 hover:text-foreground/80 select-none py-0.5">
+                    风险反推详解 ▸
+                  </summary>
+                  <div className="mt-2 space-y-2.5 rounded-md bg-muted/50 border border-border/40 px-3 py-2">
+                    <p className="font-medium text-foreground/80">本质：先定止损，再算仓位</p>
+
+                    <div className="space-y-1">
+                      <p className="font-medium text-foreground/70">① 每股最多亏多少（perShareRisk）</p>
+                      <p className="font-mono bg-background/60 rounded px-2 py-1">perShareRisk = max(ATR × 倍数, 价格 × 最小止损%)</p>
+                      <table className="mt-1 w-full text-[11px] border-collapse">
+                        <thead><tr className="text-foreground/50"><th className="text-left py-0.5 pr-4 font-medium">季节</th><th className="text-left py-0.5 pr-4 font-medium">ATR 倍数</th><th className="text-left py-0.5 font-medium">最小止损%</th></tr></thead>
+                        <tbody className="divide-y divide-border/30">
+                          <tr><td className="py-0.5 pr-4">冬季</td><td className="py-0.5 pr-4">2.5×</td><td className="py-0.5">8%</td></tr>
+                          <tr><td className="py-0.5 pr-4">春季</td><td className="py-0.5 pr-4">2.0×</td><td className="py-0.5">5%</td></tr>
+                          <tr><td className="py-0.5 pr-4">夏季</td><td className="py-0.5 pr-4">2.0×</td><td className="py-0.5">5%</td></tr>
+                        </tbody>
+                      </table>
+                      <p className="text-foreground/50">例：价格¥10，ATR=¥0.30（春季）→ max(0.30×2.0, 10×5%) = max(0.60, 0.50) = <span className="text-foreground/70 font-medium">¥0.60/股</span></p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="font-medium text-foreground/70">② 最多能买几股</p>
+                      <p className="font-mono bg-background/60 rounded px-2 py-1">股数 = floor(风险预算 ÷ perShareRisk)</p>
+                      <p className="text-foreground/50">例：风险预算¥1200 ÷ ¥0.60 = <span className="text-foreground/70 font-medium">2000 股</span></p>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="font-medium text-foreground/70">③ 换算成金额</p>
+                      <p className="font-mono bg-background/60 rounded px-2 py-1">风险反推可买 = 股数 × 当前价格</p>
+                      <p className="text-foreground/50">例：2000 × ¥10 = <span className="text-foreground/70 font-medium">¥20,000</span></p>
+                    </div>
+
+                    <div className="border-t border-border/40 pt-2 space-y-1">
+                      <p className="font-medium text-foreground/70">为什么用 ATR？</p>
+                      <p>ATR 反映真实波动幅度，低波动股自动买多、高波动股自动买少——触发止损时账户损失始终控制在同一风险预算内（风险对等）。</p>
+                      <p className="text-foreground/50 mt-1">最小止损% 是保底值，防止 ATR 极度压缩时止损过密被频繁扫出。</p>
+                    </div>
+                  </div>
+                </details>
+              )}
               {pos.liquidityCappedValue > 0 && (
                 <FlowItem label="流动性上限" value={formatMoney(pos.liquidityCappedValue)}
                   hint="= 20日平均成交额 × 参与率(good:2%, fair:1%, poor:0.5%)，避免买太多导致滑点" />
