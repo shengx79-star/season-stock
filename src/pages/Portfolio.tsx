@@ -57,6 +57,8 @@ const Portfolio = () => {
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const [editingPosition, setEditingPosition] = useState(false);
   const [posForm, setPosForm] = useState({ positionValue: "", costBasis: "", shares: "", quotaValue: "" });
+  const [filterMarket, setFilterMarket] = useState<"all" | "A" | "HK" | "US">("all");
+  const [filterSeason, setFilterSeason] = useState<"all" | "spring" | "summer" | "autumn" | "winter">("all");
 
   const positionInputs: PositionInput[] = useMemo(() => {
     return portfolioStocks.map((stock) => {
@@ -131,6 +133,26 @@ const Portfolio = () => {
     });
     setEditingPosition(true);
   };
+
+  const detectMarket = (symbol: string): "A" | "HK" | "US" => {
+    const upper = symbol.toUpperCase();
+    if (upper.endsWith(".SH") || upper.endsWith(".SZ") || upper.endsWith(".BJ")) return "A";
+    if (upper.endsWith(".HK")) return "HK";
+    if (upper.endsWith(".US") || /^[A-Z]+$/.test(upper)) return "US";
+    // bare numeric: 6-digit → A股, 5-digit starting with 0 → 港股
+    if (/^\d{6}$/.test(symbol)) return "A";
+    if (/^0\d{4}$/.test(symbol)) return "HK";
+    return "A";
+  };
+
+  const filteredPositions = useMemo(() => {
+    if (!portfolio) return [];
+    return portfolio.positions.filter((pos) => {
+      if (filterMarket !== "all" && detectMarket(pos.symbol) !== filterMarket) return false;
+      if (filterSeason !== "all" && pos.stage !== filterSeason) return false;
+      return true;
+    });
+  }, [portfolio, filterMarket, filterSeason]);
 
   if (portfolioLoading) {
     return (
@@ -225,9 +247,33 @@ const Portfolio = () => {
             </div>
           )}
 
+          {/* Filter chips */}
+          <div className="px-3 py-2 border-b border-border flex flex-wrap gap-1.5">
+            {(["all", "A", "HK", "US"] as const).map((m) => (
+              <button key={m} onClick={() => setFilterMarket(m)}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                  filterMarket === m ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground"
+                }`}>
+                {m === "all" ? "全部" : m === "A" ? "A股" : m === "HK" ? "港股" : "美股"}
+              </button>
+            ))}
+            <div className="w-px bg-border self-stretch mx-0.5" />
+            {(["all", "spring", "summer", "autumn", "winter"] as const).map((s) => (
+              <button key={s} onClick={() => setFilterSeason(s)}
+                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                  filterSeason === s
+                    ? s === "all" ? "bg-primary text-primary-foreground"
+                      : `bg-[hsl(var(--${s}))] text-white`
+                    : "bg-secondary text-muted-foreground hover:text-foreground"
+                }`}>
+                {s === "all" ? "全季" : seasonEmojis[s]}
+              </button>
+            ))}
+          </div>
+
           {/* Stock list */}
           <div className="flex-1 overflow-y-auto">
-            {portfolio?.positions.map((pos) => (
+            {filteredPositions.map((pos) => (
               <button
                 key={pos.symbol}
                 onClick={() => { setSelectedSymbol(pos.symbol); setEditingPosition(false); setMobileShowDetail(true); }}
@@ -280,11 +326,15 @@ const Portfolio = () => {
                 </div>
               </button>
             ))}
-            {(!portfolio || portfolio.positions.length === 0) && (
+            {!portfolio || portfolio.positions.length === 0 ? (
               <div className="p-6 text-center text-muted-foreground text-xs">
                 请在四季分析页面标记股票进入仓位管理
               </div>
-            )}
+            ) : filteredPositions.length === 0 ? (
+              <div className="p-6 text-center text-muted-foreground text-xs">
+                当前筛选条件下无持仓
+              </div>
+            ) : null}
           </div>
         </div>
 
