@@ -481,7 +481,7 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
           <div className="text-2xl font-bold">¥{pos.currentPrice.toFixed(2)}</div>
           {pos.costBasis > 0 && (
             <div className={`text-sm font-medium ${pos.pnlPct > 0 ? "text-[hsl(var(--summer))]" : pos.pnlPct < 0 ? "text-destructive" : "text-muted-foreground"}`}>
-              {pos.pnlPct > 0 ? "+" : ""}{pos.pnlPct.toFixed(2)}%
+              {"\n"}
             </div>
           )}
         </div>
