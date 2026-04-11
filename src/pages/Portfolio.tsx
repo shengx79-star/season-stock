@@ -601,50 +601,6 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
             outputColor={pos.executableTargetValue < pos.rawTargetValue ? "text-[hsl(var(--autumn))]" : undefined}
           >
             <div className="space-y-0.5">
-              {/* 层级说明 */}
-              <div className="rounded-md bg-muted/50 border border-border/40 px-3 py-2 text-xs text-muted-foreground space-y-1.5 mb-2">
-                <p className="font-medium text-foreground/80">为什么是"2.5"而不是单独一层？</p>
-                <p>它不改变长期目标仓位（L2 输出），只改变"现在能执行多少"以及 L3 风险预算的上限系数，是 L2 和 L3 之间的质量门控。</p>
-                <div className="space-y-1 pt-0.5">
-                  <p className="font-medium text-foreground/70">① Setup 评分（0–5 分）—— 由置信度自动映射</p>
-                  <p>≤1 → 信号太弱，风险预算系数归零（禁止买入）</p>
-                  <p>2 → 弱信号，风险预算打 7 折</p>
-                  <p>3–5 → 正常到极强，风险预算按比例放大</p>
-                  <details className="mt-1">
-                    <summary className="cursor-pointer text-foreground/60 hover:text-foreground/80 select-none">
-                      置信度 → 评分对照表 ▸
-                    </summary>
-                    <table className="mt-1.5 w-full text-[11px] border-collapse">
-                      <thead>
-                        <tr className="text-foreground/50">
-                          <th className="text-left py-0.5 pr-3 font-medium">confidence</th>
-                          <th className="text-left py-0.5 font-medium">setupScore</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/30">
-                        {[
-                          ["< 50%",  "1 — 禁止买入"],
-                          ["50–65%", "2 — 弱信号，×0.7"],
-                          ["65–75%", "3 — 正常，×1.0"],
-                          ["75–85%", "4 — 强，×1.15"],
-                          ["≥ 85%",  "5 — 极强，×1.25"],
-                        ].map(([conf, score]) => (
-                          <tr key={conf}>
-                            <td className="py-0.5 pr-3 tabular-nums">{conf}</td>
-                            <td className="py-0.5">{score}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <p className="mt-1.5 text-foreground/50">置信度来自 stockClassifier.ts，反映四季分类的确信程度——各指标越一致、信号越清晰，置信度越高。</p>
-                  </details>
-                </div>
-                <div className="space-y-1 pt-0.5">
-                  <p className="font-medium text-foreground/70">② 春季先锋仓 / 确认仓（仅春季触发）</p>
-                  <p>先锋仓（pilot）：先释放 40% 目标仓位试水</p>
-                  <p>确认仓（confirmed）：评分≥3 + 无周日冲突 + (upTurn≥2 或 已浮盈) → 才释放全量</p>
-                </div>
-              </div>
               <FlowItem label="Setup 评分" value={`${pos.setupScore}/5`}
                 hint={pos.setupScore <= 1 ? "0-1分=无效信号，L3 风险预算系数=0（禁止买入）"
                   : pos.setupScore === 2 ? "2分=弱信号，L3 风险预算 ×0.7（买入上限缩减）"
