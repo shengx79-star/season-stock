@@ -500,9 +500,9 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
         const pnlAmount = pos.currentPositionValue - pos.currentPositionValue / (1 + pnlRatio);
         const isProfit = pos.pnlPct > 0;
         const isLoss   = pos.pnlPct < 0;
-        const pnlColor = isProfit ? "text-[hsl(var(--summer))]" : isLoss ? "text-destructive" : "text-muted-foreground";
-        const pnlBg    = isProfit ? "bg-[hsl(var(--summer))/8]  border-[hsl(var(--summer))/20]"
-                       : isLoss   ? "bg-destructive/8 border-destructive/20"
+        const pnlColor = isProfit ? "text-green-500" : isLoss ? "text-red-500" : "text-muted-foreground";
+        const pnlBg    = isProfit ? "bg-green-500/10 border-green-500/20"
+                       : isLoss   ? "bg-red-500/10 border-red-500/20"
                        : "bg-secondary border-border";
         return (
           <div className={`rounded-lg border px-4 py-3 ${pnlBg}`}>
