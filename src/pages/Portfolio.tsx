@@ -594,11 +594,11 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
           {/* Layer 2.5: Setup 质量层 */}
           <LayerStep
             layerNum="2.5"
-            title="Setup 质量层"
+            title="质量层 · Setup Quality"
             subtitle="这次信号质量如何？春季该先锋仓还是满仓？"
             outputLabel="可执行目标"
             outputValue={formatMoney(pos.executableTargetValue)}
-            outputColor={pos.springEntryPhase === "pilot" ? "text-[hsl(var(--autumn))]" : undefined}
+            outputColor={pos.executableTargetValue < pos.rawTargetValue ? "text-[hsl(var(--autumn))]" : undefined}
           >
             <div className="space-y-0.5">
               {/* 层级说明 */}
@@ -665,12 +665,10 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
                 <FlowItem label="释放上限" value={formatMoney(pos.springReleaseCap)}
                   hint={pos.springEntryPhase === "pilot" ? "= 原始目标 × 40%，等市场证明你对了再释放剩余" : "= 原始目标 × 100%"} />
               )}
-              {pos.springEntryPhase === "pilot" && (
-                <div className="border-t border-border/50 mt-1.5 pt-1.5">
-                  <FlowItem label="输出 → 可执行目标仓位（先锋仓截断）" value={formatMoney(pos.executableTargetValue)} emphasis color="text-[hsl(var(--autumn))]"
-                    hint="先锋仓模式下只释放原始目标的40%，升级到确认仓后才允许执行全量" />
-                </div>
-              )}
+              <div className="border-t border-border/50 mt-1.5 pt-1.5">
+                <FlowItem label="输出 → 可执行目标仓位" value={formatMoney(pos.executableTargetValue)} emphasis
+                  hint="长期持仓目标，不受单次波动影响；ATR 环境系数在 L3 风险预算层生效，控制每笔订单买入上限" />
+              </div>
             </div>
           </LayerStep>
 
