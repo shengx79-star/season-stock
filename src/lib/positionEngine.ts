@@ -1,8 +1,10 @@
 /**
- * 仓位管理引擎 v3 — 三层架构
+ * 仓位管理引擎 v3.1 — 四层架构
  * Layer 1: 市场层 (Market Context) → 总仓位上限
  * Layer 2: 个股层 (Target Position) → 目标仓位
- * Layer 3: 执行层 (Execution Path) → 操作建议
+ * Layer 2.5: Setup 质量层 → spring先锋/确认、ATR环境刹车
+ * Layer 3: 订单风险预算层 → 单笔最多可买
+ * Layer 4: 执行层 (Execution Path) → 操作建议
  */
 
 import { ClassificationResult, Candle } from "./stockClassifier";
@@ -56,7 +58,9 @@ export interface PositionInput {
   themeCluster: string;
   liquidityLevel: LiquidityLevel;
   wyckoffEvent?: WyckoffEvent;
-  setupScore?: number; // 0-5；未提供时由 quantConfidence 自动映射
+  setupScore?: number;    // 0-5；未提供时由 quantConfidence 自动映射
+  adv20Value?: number;    // 20日平均成交额（元），用于流动性上限
+  atrEnvFactor?: number;  // ATR环境刹车系数，未提供时从dailyBars计算
 }
 
 export interface MarketContext {
@@ -96,12 +100,18 @@ export interface StockPositionResult {
   costBasis: number;
   currentPrice: number;
   pnlPct: number;
-  // v3.1: risk budget layer
+  // v3.1: setup 质量层
   setupScore: number;
   wyckoffEvent: WyckoffEvent;
+  springEntryPhase: "pilot" | "confirmed" | null;
+  springReleaseCap: number;
+  executableTargetValue: number;
+  // v3.1: 风险预算层
+  atrEnvFactor: number;
   drawdownFactor: number;
   riskBudgetValue: number;
   riskCappedValue: number;
+  liquidityCappedValue: number;
   allowedEntryValue: number;
 }
 
@@ -256,6 +266,48 @@ export function computeATR20(dailyBars: Candle[]): number {
 }
 
 // =============================================
+// v3.1: ATR 环境刹车 & ADV20
+// =============================================
+
+/**
+ * 计算 ATR 环境系数。
+ * 用近 10 条 TR 均值 / 更早 TR 均值 判断当前波动是否异常放大。
+ * 无需外部 ATR Median 数据，用现有 35 条 bar 近似。
+ */
+export function computeATREnvFactor(dailyBars: Candle[]): number {
+  if (dailyBars.length < 15) return 1.0;
+  const trs: number[] = [];
+  for (let i = 1; i < dailyBars.length; i++) {
+    const tr = Math.max(
+      dailyBars[i].high - dailyBars[i].low,
+      Math.abs(dailyBars[i].high - dailyBars[i - 1].close),
+      Math.abs(dailyBars[i].low - dailyBars[i - 1].close),
+    );
+    trs.push(tr);
+  }
+  const recent = trs.slice(-10);
+  const historical = trs.slice(0, -10);
+  if (historical.length === 0) return 1.0;
+  const recentAvg    = recent.reduce((s, v) => s + v, 0) / recent.length;
+  const historicalAvg = historical.reduce((s, v) => s + v, 0) / historical.length;
+  if (historicalAvg === 0) return 1.0;
+  const ratio = recentAvg / historicalAvg;
+  if (ratio <= 1.0) return 1.0;
+  if (ratio <= 1.3) return 0.85;
+  return 0.65;
+}
+
+/**
+ * 计算 20 日平均成交额（元）= avg(close × volume) over last 20 bars。
+ */
+export function computeADV20Value(dailyBars: Candle[]): number {
+  if (dailyBars.length < 20) return 0;
+  const bars = dailyBars.slice(-20);
+  const total = bars.reduce((sum, b) => sum + b.close * b.volume, 0);
+  return total / 20;
+}
+
+// =============================================
 // v3.1: 风险预算层
 // =============================================
 
@@ -269,26 +321,64 @@ function setupScoreFromConfidence(confidence: number): number {
 }
 
 /**
+ * Spring 先锋仓 / 确认仓判定。
+ * - confirmed：setup 评分 ≥ 3 且无周日冲突，且 (upTurnCount ≥ 2 或已有浮盈)
+ * - pilot：其余 spring 场景
+ */
+function computeSpringEntryPhase(
+  stage: string,
+  effectiveSetupScore: number,
+  upTurnCount: number,
+  pnlPct: number,       // 百分比，如 5.0 = +5%
+  weeklyDailyConflict: boolean,
+): "pilot" | "confirmed" | null {
+  if (stage !== "spring") return null;
+  if (
+    effectiveSetupScore >= 3 &&
+    !weeklyDailyConflict &&
+    (upTurnCount >= 2 || pnlPct > 0)
+  ) {
+    return "confirmed";
+  }
+  return "pilot";
+}
+
+/** 流动性上限：ADV20 × 参与率 */
+function computeLiquidityCappedValue(adv20Value: number, level: LiquidityLevel): number {
+  const participationRate: Record<LiquidityLevel, number> = {
+    good: 0.02,
+    fair: 0.01,
+    poor: 0.005,
+    none: 0.0,
+  };
+  return adv20Value * participationRate[level];
+}
+
+/**
  * 计算本笔交易的风险预算金额。
- * = totalAssets × baseRiskPct × regimeFactor × setupFactor × drawdownFactor
+ * = totalAssets × baseRiskPct × regimeFactor × atrEnvFactor × drawdownFactor × setupFactor
+ * 数值参考 v3.1 规范。
  */
 function computeRiskBudget(
   totalAssets: number,
   regime: MarketRegime,
   effectiveSetupScore: number,
   drawdownPct: number,
+  atrEnvFactor: number,
 ): number {
+  // P0: 按文档校正的 baseRiskPct
   const baseRiskPctMap: Record<MarketRegime, number> = {
-    healthy_bull:  0.010,
-    neutral_bull:  0.0075,
-    mild:          0.0065,
-    overheated:    0.005,
-    weakening:     0.004,
-    severe_winter: 0.002,
+    healthy_bull:  0.008,   // 0.80%
+    neutral_bull:  0.006,   // 0.60%
+    mild:          0.005,   // 0.50%
+    overheated:    0.0045,  // 0.45%
+    weakening:     0.0035,  // 0.35%
+    severe_winter: 0.002,   // 0.20%
   };
+  // P0: 按文档校正的 regimeFactor
   const regimeFactorMap: Record<MarketRegime, number> = {
     healthy_bull:  1.0,
-    neutral_bull:  0.8,
+    neutral_bull:  0.9,
     mild:          0.8,
     overheated:    0.7,
     weakening:     0.5,
@@ -296,7 +386,7 @@ function computeRiskBudget(
   };
 
   // setupScore ≤ 1 → 不允许开新仓（factor=0）
-  const setupFactorMap: Record<number, number> = { 0: 0, 1: 0, 2: 0.7, 3: 1.0, 4: 1.2, 5: 1.3 };
+  const setupFactorMap: Record<number, number> = { 0: 0, 1: 0, 2: 0.7, 3: 1.0, 4: 1.15, 5: 1.25 };
   const setupFactor = setupFactorMap[clamp(Math.round(effectiveSetupScore), 0, 5)] ?? 1.0;
 
   const drawdownFactor =
@@ -308,8 +398,9 @@ function computeRiskBudget(
     totalAssets *
     baseRiskPctMap[regime] *
     regimeFactorMap[regime] *
-    setupFactor *
-    drawdownFactor
+    atrEnvFactor *
+    drawdownFactor *
+    setupFactor
   );
 }
 
@@ -343,7 +434,7 @@ function computeRiskCappedValue(
 function getAction(
   stage: string,
   currentValue: number,
-  targetValue: number,
+  targetValue: number,           // executableTargetValue（已应用 spring 释放上限）
   totalAssets: number,
   costBasis: number,
   currentPrice: number,
@@ -351,26 +442,27 @@ function getAction(
   atrPct: number,
   quantConfidence: number,
   weeklyDailyConflict: boolean,
-  pendingStage: string | null,
+  upTurnCount: number,           // v3.1: 用于冬季入场过滤
+  downTurnCount: number,         // v3.1: 用于 pending autumn 提前防守
+  percentB: number | null,       // v3.1: 用于冬季入场过滤
+  pnlPct: number,                // 已在外部计算（百分比，如 5.0 = +5%）
 ): { action: ActionType; priority: number; notes: string[] } {
   const notes: string[] = [];
   const gap = targetValue - currentValue;
   const threshold = Math.max(targetValue * 0.20, totalAssets * 0.005);
 
-  // PnL
-  const pnlPct = costBasis > 0 ? (currentPrice - costBasis) / costBasis : 0;
-
   // Risk checks: hard stop / trailing stop
-  const hardStopWinter = clamp(Math.max(0.08, 2.5 * atrPct), 0.08, 0.12);
-  const hardStopSpring = clamp(Math.max(0.05, 2.0 * atrPct), 0.05, 0.10);
+  const hardStopWinter   = clamp(Math.max(0.08, 2.5 * atrPct), 0.08, 0.12);
+  const hardStopSpring   = clamp(Math.max(0.05, 2.0 * atrPct), 0.05, 0.10);
   const trailingStopSummer = clamp(Math.max(0.08, 2.5 * atrPct), 0.08, 0.12);
+  const pnlRatio = pnlPct / 100;
 
   // Force exit checks
   if (currentValue > 0 && costBasis > 0) {
-    if (stage === "winter" && pnlPct <= -hardStopWinter) {
+    if (stage === "winter" && pnlRatio <= -hardStopWinter) {
       return { action: "force_exit", priority: 0, notes: ["❗ 冬季硬止损触发"] };
     }
-    if (stage === "spring" && pnlPct <= -hardStopSpring) {
+    if (stage === "spring" && pnlRatio <= -hardStopSpring) {
       return { action: "force_exit", priority: 0, notes: ["❗ 春季硬止损触发"] };
     }
     if (stage === "summer" && highestClose > 0) {
@@ -382,6 +474,16 @@ function getAction(
         notes.push("⚠️ 夏季回撤超10%，建议减仓50%");
         return { action: "reduce", priority: 1, notes };
       }
+    }
+  }
+
+  // P3: pending autumn 提前防守
+  // 条件：非秋季但 downTurnCount >= 2，持仓超过目标的 50%
+  if (stage !== "autumn" && currentValue > 0 && downTurnCount >= 2) {
+    const threshold1 = totalAssets * 0.005;
+    if (currentValue > targetValue + threshold1) {
+      notes.push("⚠️ 转弱信号增强（downTurn≥2），提前防守减仓");
+      return { action: "reduce", priority: 1, notes };
     }
   }
 
@@ -403,12 +505,20 @@ function getAction(
   // Enter / Add
   if (gap > threshold) {
     const isConfirmed = stage === "spring" || stage === "summer";
-    const highConfPending =
-      (pendingStage === "spring" || pendingStage === "summer") &&
-      quantConfidence >= 0.75 &&
-      !weeklyDailyConflict;
 
-    if (isConfirmed || highConfPending) {
+    // P2: 冬季入场过滤 — 至少满足一项才允许建仓
+    if (stage === "winter" && currentValue === 0) {
+      const winterOK =
+        upTurnCount >= 1 ||
+        (percentB !== null && percentB <= 20) ||
+        quantConfidence >= 0.60;
+      if (!winterOK) {
+        notes.push("⛔ 冬季入场门槛未达（需 upTurn≥1 或 %B≤20）");
+        return { action: "hold", priority: 5, notes };
+      }
+    }
+
+    if (isConfirmed) {
       if (currentValue === 0) {
         notes.push("🌱 符合建仓条件");
         return { action: "enter", priority: 3, notes };
@@ -467,7 +577,9 @@ export function computePortfolio(
       : "unknown";
     const quantConfidence = cls?.confidence ?? 0.5;
     const weeklyDailyConflict = cls?.flags?.weeklyDailyConflict ?? false;
-    const pendingStage = null; // TODO: from persistence state
+    const upTurnCount   = cls?.turnSignals?.upTurnCount   ?? 0;
+    const downTurnCount = cls?.turnSignals?.downTurnCount ?? 0;
+    const percentB      = cls?.indicators?.percentB       ?? null;
 
     const baseQuota = input.quotaValue ?? totalAssets * (defaultQuotaPct / 100);
     const effectiveQuota = Math.min(baseQuota, singleNameSoftCap);
@@ -486,17 +598,38 @@ export function computePortfolio(
       ? (input.currentPrice - input.costBasis) / input.costBasis * 100
       : 0;
 
-    // v3.1: 风险预算层
+    // ---- v3.1 Layer 2.5: Setup 质量 & Spring 先锋/确认仓 ----
     const wyckoffEvent: WyckoffEvent = input.wyckoffEvent ?? "none";
     const effectiveSetupScore =
       input.setupScore !== undefined
         ? input.setupScore
         : setupScoreFromConfidence(quantConfidence);
+
+    const springEntryPhase = computeSpringEntryPhase(
+      stage,
+      effectiveSetupScore,
+      upTurnCount,
+      pnlPct,
+      weeklyDailyConflict,
+    );
+
+    // P1: spring 先锋仓只释放 40%，confirmed 释放全量
+    const springReleaseCap =
+      springEntryPhase === "pilot"     ? rawTarget * 0.40 :
+      springEntryPhase === "confirmed" ? rawTarget         : rawTarget;
+    const executableTargetValue = stage === "spring"
+      ? Math.min(rawTarget, springReleaseCap)
+      : rawTarget;
+
+    // ---- v3.1 Layer 3: 风险预算 ----
+    const atrEnvFactor = input.atrEnvFactor ?? 1.0; // 由 Portfolio.tsx 预计算传入
+
     const riskBudgetValue = computeRiskBudget(
       totalAssets,
       market.regime,
       effectiveSetupScore,
       portfolioDrawdownPct,
+      atrEnvFactor,
     );
     const riskCappedValue = computeRiskCappedValue(
       riskBudgetValue,
@@ -504,6 +637,13 @@ export function computePortfolio(
       input.atr20,
       stage,
     );
+
+    // P5: 流动性上限（ADV20 × 参与率）
+    const adv20 = input.adv20Value ?? 0;
+    const liquidityCappedValue = adv20 > 0
+      ? computeLiquidityCappedValue(adv20, input.liquidityLevel)
+      : Infinity; // 无 ADV20 数据时不设流动性限制
+
     // drawdownFactor for display
     const drawdownFactor =
       portfolioDrawdownPct < 0.03 ? 1.0 :
@@ -520,7 +660,7 @@ export function computePortfolio(
     const { action, priority, notes } = getAction(
       stage,
       input.positionValue,
-      rawTarget,
+      executableTargetValue,     // 使用 spring 释放上限后的目标
       totalAssets,
       input.costBasis,
       input.currentPrice,
@@ -528,24 +668,32 @@ export function computePortfolio(
       atrPct,
       quantConfidence,
       weeklyDailyConflict,
-      pendingStage,
+      upTurnCount,
+      downTurnCount,
+      percentB,
+      pnlPct,
     );
 
     // Add context notes
-    const seasonNotes = {
+    const seasonNotes: Record<string, string> = {
       winter: "❄️ 冬季：小仓试错",
       spring: "🌱 春季：启动建仓",
       summer: "☀️ 夏季：主仓持有",
       autumn: "🍂 秋季：退出管理",
     };
     if (stage !== "unknown") {
-      notes.unshift(seasonNotes[stage as Season] || "");
+      notes.unshift(seasonNotes[stage] ?? "");
+    }
+    if (springEntryPhase === "pilot") {
+      notes.push("🔬 spring pilot：仅释放40%目标仓位");
+    } else if (springEntryPhase === "confirmed") {
+      notes.push("✅ spring confirmed：允许释放全量目标仓位");
     }
 
-    // v3.1: allowedEntryValue = min(positionGap, riskCappedValue)
-    const positionGap = rawTarget - input.positionValue;
+    // v3.1: allowedEntryValue = min(gap, riskCapped, liquidityCapped)
+    const positionGap = executableTargetValue - input.positionValue;
     const allowedEntryValue = positionGap > 0
-      ? Math.min(positionGap, riskCappedValue)
+      ? Math.min(positionGap, riskCappedValue, liquidityCappedValue)
       : 0;
 
     rawResults.push({
@@ -571,12 +719,18 @@ export function computePortfolio(
       costBasis: input.costBasis,
       currentPrice: input.currentPrice,
       pnlPct,
-      // v3.1 fields
+      // v3.1 setup 质量层
       setupScore: effectiveSetupScore,
       wyckoffEvent,
+      springEntryPhase,
+      springReleaseCap,
+      executableTargetValue,
+      // v3.1 风险预算层
+      atrEnvFactor,
       drawdownFactor,
       riskBudgetValue,
       riskCappedValue,
+      liquidityCappedValue: liquidityCappedValue === Infinity ? 0 : liquidityCappedValue,
       allowedEntryValue,
     });
   }
@@ -589,10 +743,14 @@ export function computePortfolio(
     const scale = capValue / rawPortfolioTarget;
     for (const r of rawResults) {
       r.finalTargetValue = r.rawTargetValue * scale;
-      r.positionGap = r.finalTargetValue - r.currentPositionValue;
+      // spring: executable 同步缩放
+      r.executableTargetValue = r.executableTargetValue * scale;
+      r.springReleaseCap = r.springReleaseCap * scale;
+      r.positionGap = r.executableTargetValue - r.currentPositionValue;
       // v3.1: 重新计算缩放后的 allowedEntryValue
+      const liquidityCap = r.liquidityCappedValue > 0 ? r.liquidityCappedValue : Infinity;
       r.allowedEntryValue = r.positionGap > 0
-        ? Math.min(r.positionGap, r.riskCappedValue)
+        ? Math.min(r.positionGap, r.riskCappedValue, liquidityCap)
         : 0;
     }
   }

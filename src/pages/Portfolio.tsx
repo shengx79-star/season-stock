@@ -5,6 +5,8 @@ import { useStockClassifications } from "@/hooks/useStockClassification";
 import {
   computePortfolio,
   computeATR20,
+  computeATREnvFactor,
+  computeADV20Value,
   computeMarketContext,
   regimeLabels,
   type PositionInput,
@@ -61,7 +63,9 @@ const Portfolio = () => {
     return portfolioStocks.map((stock) => {
       const pos = positions.find((p) => p.symbol === stock.symbol);
       const dailyBars = dailyBarsMap.get(stock.symbol) || [];
-      const atr20 = computeATR20(dailyBars);
+      const atr20        = computeATR20(dailyBars);
+      const atrEnvFactor = computeATREnvFactor(dailyBars);
+      const adv20Value   = computeADV20Value(dailyBars);
       const shares = pos?.shares ?? 0;
       const positionValue = shares * stock.price;
       return {
@@ -70,6 +74,7 @@ const Portfolio = () => {
         highestCloseSinceEntry: pos?.highestCloseSinceEntry ?? 0, atr20,
         quotaValue: pos?.quotaValue ?? null, industry: pos?.industry ?? stock.sector,
         themeCluster: pos?.themeCluster ?? "", liquidityLevel: pos?.liquidityLevel ?? "good",
+        atrEnvFactor, adv20Value,
       };
     });
   }, [portfolioStocks, positions, dailyBarsMap]);
@@ -410,9 +415,19 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
           <DetailItem label="流动性因子" value={pos.liquidityFactor.toFixed(2)} />
           {pos.hardStopPct != null && <DetailItem label="硬止损" value={`-${pos.hardStopPct.toFixed(1)}%`} color="text-destructive" />}
           {pos.trailingStopPct != null && <DetailItem label="跟踪止盈" value={`-${pos.trailingStopPct.toFixed(1)}%`} color="text-[hsl(var(--autumn))]" />}
+          {pos.springEntryPhase && (
+            <DetailItem
+              label="春季阶段"
+              value={pos.springEntryPhase === "pilot" ? "先锋仓(40%)" : "确认仓(100%)"}
+              color={pos.springEntryPhase === "confirmed" ? "text-[hsl(var(--summer))]" : undefined}
+            />
+          )}
           {pos.riskBudgetValue > 0 && <DetailItem label="风险预算" value={formatMoney(pos.riskBudgetValue)} />}
           {pos.allowedEntryValue > 0 && pos.positionGap > 0 && (
             <DetailItem label="本笔可买" value={formatMoney(pos.allowedEntryValue)} color="text-[hsl(var(--summer))]" />
+          )}
+          {pos.atrEnvFactor < 1.0 && (
+            <DetailItem label="ATR刹车" value={`×${pos.atrEnvFactor}`} color="text-[hsl(var(--autumn))]" />
           )}
           {pos.drawdownFactor < 1.0 && (
             <DetailItem label="回撤刹车" value={`×${pos.drawdownFactor}`} color="text-[hsl(var(--autumn))]" />
