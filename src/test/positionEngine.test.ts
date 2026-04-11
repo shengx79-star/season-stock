@@ -24,6 +24,7 @@ function makeBar(
     close,
     volume: opts.volume ?? 1_000_000,
     timestamp: 0,
+    date: "2024-01-01",
   };
 }
 
@@ -36,6 +37,7 @@ function makeBars(n: number, close = 100, tr = 2): ReturnType<typeof makeBar>[] 
     close,
     volume: 1_000_000,
     timestamp: i,
+    date: `2024-01-${String(i + 1).padStart(2, "0")}`,
   }));
 }
 
