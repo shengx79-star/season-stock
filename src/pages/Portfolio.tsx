@@ -16,7 +16,7 @@ import {
 } from "@/lib/positionEngine";
 import { seasonLabels, seasonEmojis, type Season } from "@/lib/stockData";
 import { AppNav } from "@/components/AppNav";
-import { Settings, TrendingUp, Trash2, Loader2, DollarSign, Briefcase, ChevronLeft } from "lucide-react";
+import { Settings, TrendingUp, Trash2, Loader2, DollarSign, Briefcase, ChevronLeft, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 const actionLabels: Record<ActionType, string> = {
@@ -82,14 +82,12 @@ const Portfolio = () => {
   const portfolio = useMemo(() => {
     if (!config || portfolioStocks.length === 0) return null;
     const result = computePortfolio(config.totalAssets, config.defaultQuotaPct, positionInputs, classifications);
-    // Use all stocks for market context instead of only portfolio stocks
     if (allClassifications.size > 0) {
       result.market = computeMarketContext(allClassifications);
     }
     return result;
   }, [config, positionInputs, classifications, allClassifications, portfolioStocks.length]);
 
-  // Auto-select first stock
   useEffect(() => {
     if (!selectedSymbol && portfolio?.positions.length) {
       setSelectedSymbol(portfolio.positions[0].symbol);
@@ -197,9 +195,9 @@ const Portfolio = () => {
         </div>
       )}
 
-      {/* Main content: left-right split on desktop, single view on mobile */}
+      {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: stock list — hidden on mobile when detail is shown */}
+        {/* Left: stock list */}
         <div className={`md:w-80 shrink-0 md:border-r border-border flex flex-col overflow-hidden ${
           mobileShowDetail ? "hidden md:flex" : "flex-1 md:flex-none"
         }`}>
@@ -289,7 +287,7 @@ const Portfolio = () => {
           </div>
         </div>
 
-        {/* Right: detail panel — full width on mobile when shown */}
+        {/* Right: detail panel */}
         <div className={`flex-1 overflow-y-auto ${
           mobileShowDetail ? "flex flex-col" : "hidden md:block"
         }`}>
@@ -299,7 +297,7 @@ const Portfolio = () => {
               editing={editingPosition}
               posForm={posForm}
               totalAssets={config?.totalAssets ?? 0}
-              portfolioCap={portfolio?.market.portfolioCap ?? 0}
+              market={portfolio?.market ?? null}
               onEdit={() => startEditPosition(selectedPos.symbol)}
               onSave={() => handleSavePosition(selectedPos.symbol)}
               onCancel={() => setEditingPosition(false)}
@@ -324,7 +322,91 @@ const Portfolio = () => {
 };
 
 // =============================================
-// Detail Panel
+// Layer Step Component — reusable for each layer
+// =============================================
+
+function LayerStep({
+  layerNum,
+  title,
+  subtitle,
+  outputLabel,
+  outputValue,
+  outputColor,
+  children,
+  defaultOpen = false,
+}: {
+  layerNum: string;
+  title: string;
+  subtitle?: string;
+  outputLabel: string;
+  outputValue: string;
+  outputColor?: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <div className="relative">
+      {/* Connector line */}
+      <div className="absolute left-5 top-10 bottom-0 w-px bg-border" />
+
+      <div className="relative">
+        {/* Layer number badge */}
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center shrink-0 z-10 bg-background">
+            <span className="text-xs font-bold text-primary">{layerNum}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <button
+              onClick={() => setOpen(!open)}
+              className="w-full text-left flex items-center justify-between group"
+            >
+              <div>
+                <h3 className="text-sm font-semibold">{title}</h3>
+                {subtitle && <p className="text-[11px] text-muted-foreground">{subtitle}</p>}
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-right">
+                  <div className="text-[10px] text-muted-foreground">{outputLabel}</div>
+                  <div className={`text-sm font-bold ${outputColor || ""}`}>{outputValue}</div>
+                </div>
+                {open ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+              </div>
+            </button>
+
+            {open && (
+              <div className="mt-2 mb-1 rounded-lg bg-secondary/40 border border-border/50 p-3">
+                {children}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FlowItem({ label, value, color, emphasis }: { label: string; value: string; color?: string; emphasis?: boolean }) {
+  return (
+    <div className="flex items-center justify-between py-1">
+      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <span className={`text-xs font-medium ${emphasis ? "font-bold" : ""} ${color || ""}`}>{value}</span>
+    </div>
+  );
+}
+
+function FormulaBlock({ formula, result }: { formula: string; result: string }) {
+  return (
+    <div className="rounded bg-background/60 p-2 text-[11px] font-mono mt-1.5">
+      <div className="text-muted-foreground break-all">{formula}</div>
+      <div className="font-semibold mt-0.5">= {result}</div>
+    </div>
+  );
+}
+
+// =============================================
+// Detail Panel — 四层架构可视化
 // =============================================
 
 interface DetailPanelProps {
@@ -332,7 +414,7 @@ interface DetailPanelProps {
   editing: boolean;
   posForm: { positionValue: string; costBasis: string; shares: string; quotaValue: string };
   totalAssets: number;
-  portfolioCap: number;
+  market: MarketContext | null;
   onEdit: () => void;
   onSave: () => void;
   onCancel: () => void;
@@ -341,12 +423,13 @@ interface DetailPanelProps {
   onRemoveFromPortfolio: () => void;
 }
 
-function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit, onSave, onCancel, onFormChange, onDelete, onRemoveFromPortfolio }: DetailPanelProps) {
+function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSave, onCancel, onFormChange, onDelete, onRemoveFromPortfolio }: DetailPanelProps) {
   const positionPct = totalAssets > 0 ? (pos.currentPositionValue / totalAssets * 100) : 0;
   const targetPct = totalAssets > 0 ? (pos.finalTargetValue / totalAssets * 100) : 0;
+  const portfolioCap = market?.portfolioCap ?? 0;
 
   return (
-    <div className="p-4 md:p-6 space-y-5 md:space-y-6 max-w-2xl">
+    <div className="p-4 md:p-6 space-y-4 max-w-2xl">
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -361,36 +444,30 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
             <span className={`px-2.5 py-1 rounded text-xs font-semibold ${actionColors[pos.action]}`}>
               {actionLabels[pos.action]}
             </span>
-            <span className="text-sm text-muted-foreground">
-              优先级 {pos.actionPriority}
-            </span>
           </div>
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold">¥{pos.currentPrice.toFixed(2)}</div>
           {pos.costBasis > 0 && (
-            <div className={`text-sm font-medium ${pos.pnlPct > 0 ? "text-[hsl(var(--summer))]" : pos.pnlPct < 0 ? "text-[hsl(var(--spring))]" : "text-muted-foreground"}`}>
+            <div className={`text-sm font-medium ${pos.pnlPct > 0 ? "text-[hsl(var(--summer))]" : pos.pnlPct < 0 ? "text-destructive" : "text-muted-foreground"}`}>
               {pos.pnlPct > 0 ? "+" : ""}{pos.pnlPct.toFixed(2)}%
             </div>
           )}
         </div>
       </div>
 
-      {/* Notes / Action reason */}
-      <div className="rounded-lg bg-secondary/50 p-4 space-y-1.5">
+      {/* Action notes */}
+      <div className="rounded-lg bg-secondary/50 p-3 space-y-1">
         {pos.notes.filter(Boolean).map((note, i) => (
           <p key={i} className="text-sm">{note}</p>
         ))}
       </div>
 
-      {/* Position bar visualization */}
+      {/* Position bar */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold">仓位对比</h3>
-        <div className="space-y-3">
-          <PositionBar label="当前仓位" value={pos.currentPositionValue} pct={positionPct} color="bg-muted-foreground" />
-          <PositionBar label="目标仓位" value={pos.finalTargetValue} pct={targetPct} color="bg-primary" />
-        </div>
-        <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
+        <PositionBar label="当前仓位" value={pos.currentPositionValue} pct={positionPct} color="bg-muted-foreground" />
+        <PositionBar label="目标仓位" value={pos.finalTargetValue} pct={targetPct} color="bg-primary" />
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>差额: <span className={`font-medium ${pos.positionGap > 0 ? "text-[hsl(var(--summer))]" : pos.positionGap < 0 ? "text-[hsl(var(--spring))]" : ""}`}>
             {pos.positionGap > 0 ? "+" : ""}{formatMoney(pos.positionGap)}
           </span></span>
@@ -398,57 +475,151 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
         </div>
       </div>
 
-      {/* Details grid */}
-      <div className="space-y-2">
-        <h3 className="text-sm font-semibold">详细参数</h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
-          <DetailItem label="当前价" value={`¥${pos.currentPrice.toFixed(2)}`} />
-          <DetailItem label="成本价" value={pos.costBasis > 0 ? `¥${pos.costBasis.toFixed(2)}` : "—"} />
-          <DetailItem label="盈亏" value={pos.costBasis > 0 ? `${pos.pnlPct.toFixed(1)}%` : "—"}
-            color={pos.pnlPct > 0 ? "text-[hsl(var(--summer))]" : pos.pnlPct < 0 ? "text-[hsl(var(--spring))]" : undefined} />
-          <DetailItem label="当前仓位" value={formatMoney(pos.currentPositionValue)} />
-          <DetailItem label="目标仓位" value={formatMoney(pos.finalTargetValue)} />
-          <DetailItem label="有效配额" value={formatMoney(pos.effectiveQuota)} />
-          <DetailItem label="置信度" value={`${(pos.quantConfidence * 100).toFixed(0)}%`} />
-          <DetailItem label="波动因子" value={pos.volatilityFactor.toFixed(2)} />
-          <DetailItem label="冲突因子" value={pos.conflictFactor.toFixed(2)} />
-          <DetailItem label="流动性因子" value={pos.liquidityFactor.toFixed(2)} />
-          {pos.hardStopPct != null && <DetailItem label="硬止损" value={`-${pos.hardStopPct.toFixed(1)}%`} color="text-destructive" />}
-          {pos.trailingStopPct != null && <DetailItem label="跟踪止盈" value={`-${pos.trailingStopPct.toFixed(1)}%`} color="text-[hsl(var(--autumn))]" />}
-          {pos.springEntryPhase && (
-            <DetailItem
-              label="春季阶段"
-              value={pos.springEntryPhase === "pilot" ? "先锋仓(40%)" : "确认仓(100%)"}
-              color={pos.springEntryPhase === "confirmed" ? "text-[hsl(var(--summer))]" : undefined}
-            />
-          )}
-          {pos.riskBudgetValue > 0 && <DetailItem label="风险预算" value={formatMoney(pos.riskBudgetValue)} />}
-          {pos.allowedEntryValue > 0 && pos.positionGap > 0 && (
-            <DetailItem label="本笔可买" value={formatMoney(pos.allowedEntryValue)} color="text-[hsl(var(--summer))]" />
-          )}
-          {pos.atrEnvFactor < 1.0 && (
-            <DetailItem label="ATR刹车" value={`×${pos.atrEnvFactor}`} color="text-[hsl(var(--autumn))]" />
-          )}
-          {pos.drawdownFactor < 1.0 && (
-            <DetailItem label="回撤刹车" value={`×${pos.drawdownFactor}`} color="text-[hsl(var(--autumn))]" />
-          )}
-        </div>
-      </div>
+      {/* ========== 四层引擎计算流水线 ========== */}
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+          <span className="w-1.5 h-4 rounded-full bg-primary inline-block" />
+          引擎计算流水线
+        </h3>
 
-      {/* Formula */}
-      <div className="space-y-2">
-        <h3 className="text-sm font-semibold">计算公式</h3>
-        <div className="rounded-lg bg-secondary p-3 text-xs font-mono leading-relaxed">
-          <div className="text-muted-foreground mb-1">raw_target = effective_quota × stageCoeff × confidenceCoeff × volatilityFactor × conflictFactor × liquidityFactor</div>
-          <div>
-            {formatMoney(pos.effectiveQuota)} × {pos.stageCoeff} × {pos.confidenceCoeff.toFixed(2)} × {pos.volatilityFactor.toFixed(2)} × {pos.conflictFactor} × {pos.liquidityFactor} = <span className="font-semibold">{formatMoney(pos.rawTargetValue)}</span>
-          </div>
-          {pos.rawTargetValue !== pos.finalTargetValue && (
-            <div className="mt-1 text-muted-foreground">
-              经组合缩放后: <span className="text-foreground font-semibold">{formatMoney(pos.finalTargetValue)}</span>
-              <span className="ml-2">(组合上限 {Math.round(portfolioCap * 100)}%)</span>
-            </div>
+        <div className="space-y-4 pl-0">
+          {/* Layer 1: 市场层 */}
+          {market && (
+            <LayerStep
+              layerNum="L1"
+              title="市场层 · Market Context"
+              subtitle="根据全市场四季分布确定总仓位上限"
+              outputLabel="仓位上限"
+              outputValue={`${Math.round(portfolioCap * 100)}%`}
+              outputColor="text-primary"
+            >
+              <div className="space-y-0.5">
+                <FlowItem label="市场状态" value={regimeLabels[market.regime]} />
+                <FlowItem label={`水温 ${Math.round(market.temperature)}°`} value={`冬${(market.winterShare*100).toFixed(0)}% 春${(market.springShare*100).toFixed(0)}% 夏${(market.summerShare*100).toFixed(0)}% 秋${(market.autumnShare*100).toFixed(0)}%`} />
+                <FlowItem label="多头强度 (strength)" value={market.strength.toFixed(2)} />
+                <FlowItem label="脆弱度 (fragility)" value={market.fragility.toFixed(2)} />
+                <FlowItem label="避险度 (riskOff)" value={market.riskOff.toFixed(2)} />
+                <div className="border-t border-border/50 mt-1.5 pt-1.5">
+                  <FlowItem label="输出 → 组合仓位上限" value={`${Math.round(portfolioCap * 100)}%`} emphasis color="text-primary" />
+                </div>
+              </div>
+            </LayerStep>
           )}
+
+          {/* Layer 2: 个股目标仓位 */}
+          <LayerStep
+            layerNum="L2"
+            title="个股层 · Target Position"
+            subtitle="配额 × 季节系数 × 置信度 × 波动 × 冲突 × 流动性"
+            outputLabel="原始目标"
+            outputValue={formatMoney(pos.rawTargetValue)}
+            defaultOpen
+          >
+            <div className="space-y-0.5">
+              <FlowItem label="有效配额" value={formatMoney(pos.effectiveQuota)} />
+              <FlowItem label={`季节系数 (${pos.stage})`} value={`×${pos.stageCoeff}`} />
+              <FlowItem label={`置信度系数 (conf=${(pos.quantConfidence*100).toFixed(0)}%)`} value={`×${pos.confidenceCoeff.toFixed(2)}`} />
+              <FlowItem label="波动因子" value={`×${pos.volatilityFactor.toFixed(2)}`} />
+              <FlowItem label="周日冲突因子" value={`×${pos.conflictFactor}`} />
+              <FlowItem label="流动性因子" value={`×${pos.liquidityFactor}`} />
+              <FormulaBlock
+                formula={`${formatMoney(pos.effectiveQuota)} × ${pos.stageCoeff} × ${pos.confidenceCoeff.toFixed(2)} × ${pos.volatilityFactor.toFixed(2)} × ${pos.conflictFactor} × ${pos.liquidityFactor}`}
+                result={formatMoney(pos.rawTargetValue)}
+              />
+              {pos.rawTargetValue !== pos.finalTargetValue && (
+                <div className="border-t border-border/50 mt-1.5 pt-1.5">
+                  <FlowItem label="经组合缩放后" value={formatMoney(pos.finalTargetValue)} emphasis color="text-primary" />
+                </div>
+              )}
+            </div>
+          </LayerStep>
+
+          {/* Layer 2.5: Setup 质量层 */}
+          <LayerStep
+            layerNum="2.5"
+            title="Setup 质量层"
+            subtitle="春季先锋/确认仓 · ATR 环境刹车"
+            outputLabel="可执行目标"
+            outputValue={formatMoney(pos.executableTargetValue)}
+            outputColor={pos.executableTargetValue < pos.rawTargetValue ? "text-[hsl(var(--autumn))]" : undefined}
+          >
+            <div className="space-y-0.5">
+              <FlowItem label="Setup 评分" value={`${pos.setupScore}/5`} />
+              {pos.springEntryPhase && (
+                <FlowItem
+                  label="春季阶段"
+                  value={pos.springEntryPhase === "pilot" ? "先锋仓 → 释放40%" : "确认仓 → 释放100%"}
+                  color={pos.springEntryPhase === "confirmed" ? "text-[hsl(var(--summer))]" : "text-[hsl(var(--autumn))]"}
+                />
+              )}
+              {pos.springEntryPhase && (
+                <FlowItem label="释放上限" value={formatMoney(pos.springReleaseCap)} />
+              )}
+              {pos.atrEnvFactor < 1.0 && (
+                <FlowItem label="ATR 环境刹车" value={`×${pos.atrEnvFactor}`} color="text-[hsl(var(--autumn))]" />
+              )}
+              <div className="border-t border-border/50 mt-1.5 pt-1.5">
+                <FlowItem label="输出 → 可执行目标仓位" value={formatMoney(pos.executableTargetValue)} emphasis />
+              </div>
+            </div>
+          </LayerStep>
+
+          {/* Layer 3: 风险预算层 */}
+          <LayerStep
+            layerNum="L3"
+            title="风险预算层 · Risk Budget"
+            subtitle="单笔交易最大可买金额"
+            outputLabel="本笔可买"
+            outputValue={pos.allowedEntryValue > 0 ? formatMoney(pos.allowedEntryValue) : "—"}
+            outputColor={pos.allowedEntryValue > 0 ? "text-[hsl(var(--summer))]" : undefined}
+          >
+            <div className="space-y-0.5">
+              <FlowItem label="风险预算" value={formatMoney(pos.riskBudgetValue)} />
+              <FlowItem label="风险反推可买" value={formatMoney(pos.riskCappedValue)} />
+              {pos.liquidityCappedValue > 0 && (
+                <FlowItem label="流动性上限" value={formatMoney(pos.liquidityCappedValue)} />
+              )}
+              {pos.drawdownFactor < 1.0 && (
+                <FlowItem label="回撤刹车" value={`×${pos.drawdownFactor}`} color="text-[hsl(var(--autumn))]" />
+              )}
+              <div className="border-t border-border/50 mt-1.5 pt-1.5">
+                <FlowItem
+                  label="输出 → min(缺口, 风险反推, 流动性)"
+                  value={pos.allowedEntryValue > 0 ? formatMoney(pos.allowedEntryValue) : "—"}
+                  emphasis
+                  color={pos.allowedEntryValue > 0 ? "text-[hsl(var(--summer))]" : undefined}
+                />
+              </div>
+            </div>
+          </LayerStep>
+
+          {/* Layer 4: 执行层 */}
+          <LayerStep
+            layerNum="L4"
+            title="执行层 · Execution"
+            subtitle="综合判断操作建议与风控"
+            outputLabel="操作"
+            outputValue={actionLabels[pos.action]}
+            outputColor={pos.action === "enter" || pos.action === "add" ? "text-[hsl(var(--summer))]" : pos.action === "hold" ? "text-muted-foreground" : "text-destructive"}
+          >
+            <div className="space-y-0.5">
+              <FlowItem label="操作建议" value={actionLabels[pos.action]} emphasis />
+              <FlowItem label="优先级" value={`${pos.actionPriority}`} />
+              {pos.hardStopPct != null && (
+                <FlowItem label="硬止损" value={`-${pos.hardStopPct.toFixed(1)}%`} color="text-destructive" />
+              )}
+              {pos.trailingStopPct != null && (
+                <FlowItem label="跟踪止盈" value={`-${pos.trailingStopPct.toFixed(1)}%`} color="text-[hsl(var(--autumn))]" />
+              )}
+              {pos.costBasis > 0 && (
+                <FlowItem
+                  label="当前盈亏"
+                  value={`${pos.pnlPct > 0 ? "+" : ""}${pos.pnlPct.toFixed(2)}%`}
+                  color={pos.pnlPct > 0 ? "text-[hsl(var(--summer))]" : pos.pnlPct < 0 ? "text-destructive" : undefined}
+                />
+              )}
+            </div>
+          </LayerStep>
         </div>
       </div>
 
@@ -457,7 +628,7 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
         <h3 className="text-sm font-semibold">持仓数据</h3>
         {editing ? (
           <div className="rounded-lg border border-border p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-muted-foreground">持仓数量</label>
                 <input type="number" value={posForm.shares} onChange={(e) => onFormChange({ ...posForm, shares: e.target.value })}
@@ -480,13 +651,13 @@ function DetailPanel({ pos, editing, posForm, totalAssets, portfolioCap, onEdit,
                   className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm" placeholder="留空用默认" />
               </div>
             </div>
-          <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
               <button onClick={onSave} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">保存</button>
               <button onClick={onCancel} className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm">取消</button>
             </div>
           </div>
         ) : (
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button onClick={onEdit} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm hover:bg-secondary/80">
               <DollarSign className="w-4 h-4" /> 编辑持仓
             </button>
@@ -517,15 +688,6 @@ function PositionBar({ label, value, pct, color }: { label: string; value: numbe
       <div className="h-2 rounded-full bg-secondary overflow-hidden">
         <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${Math.min(pct, 100)}%` }} />
       </div>
-    </div>
-  );
-}
-
-function DetailItem({ label, value, color }: { label: string; value: string; color?: string }) {
-  return (
-    <div className="rounded-lg bg-secondary/50 p-2.5">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className={`text-sm font-medium mt-0.5 ${color || ""}`}>{value}</div>
     </div>
   );
 }
