@@ -99,6 +99,18 @@ const Portfolio = () => {
     }
   }, [portfolio, selectedSymbol]);
 
+  // Auto-init posForm when selected symbol changes
+  useEffect(() => {
+    if (!selectedSymbol) return;
+    const pos = positions.find(p => p.symbol === selectedSymbol);
+    setPosForm({
+      positionValue: pos?.positionValue?.toString() || "0",
+      costBasis: pos?.costBasis?.toString() || "0",
+      shares: pos?.shares?.toString() || "0",
+      quotaValue: pos?.quotaValue?.toString() || "",
+    });
+  }, [selectedSymbol, positions]);
+
   const selectedPos = portfolio?.positions.find((p) => p.symbol === selectedSymbol) ?? null;
 
   const handleSaveConfig = async () => {
@@ -369,13 +381,10 @@ const Portfolio = () => {
           {selectedPos ? (
             <DetailPanel
               pos={selectedPos}
-              editing={editingPosition}
               posForm={posForm}
               totalAssets={config?.totalAssets ?? 0}
               market={portfolio?.market ?? null}
-              onEdit={() => startEditPosition(selectedPos.symbol)}
               onSave={() => handleSavePosition(selectedPos.symbol)}
-              onCancel={() => setEditingPosition(false)}
               onFormChange={setPosForm}
               onRemoveFromPortfolio={async () => {
                 await togglePortfolio(selectedPos.symbol, false);
@@ -490,18 +499,15 @@ function FormulaBlock({ formula, result }: { formula: string; result: string }) 
 
 interface DetailPanelProps {
   pos: StockPositionResult;
-  editing: boolean;
   posForm: { positionValue: string; costBasis: string; shares: string; quotaValue: string };
   totalAssets: number;
   market: MarketContext | null;
-  onEdit: () => void;
   onSave: () => void;
-  onCancel: () => void;
   onFormChange: (form: { positionValue: string; costBasis: string; shares: string; quotaValue: string }) => void;
   onRemoveFromPortfolio: () => void;
 }
 
-function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSave, onCancel, onFormChange, onRemoveFromPortfolio }: DetailPanelProps) {
+function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, onRemoveFromPortfolio }: DetailPanelProps) {
   const quota = pos.effectiveQuota > 0 ? pos.effectiveQuota : totalAssets;
   const positionPct = quota > 0 ? (pos.currentPositionValue / quota * 100) : 0;
   const targetPct   = quota > 0 ? (pos.finalTargetValue   / quota * 100) : 0;
@@ -566,36 +572,55 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
         ))}
       </div>
 
-      {/* 成本价 & 盈亏详情 */}
-      {pos.costBasis > 0 && pos.currentPositionValue > 0 && (() => {
-        const pnlRatio = pos.pnlPct / 100;
-        const pnlAmount = pos.currentPositionValue - pos.currentPositionValue / (1 + pnlRatio);
-        const isProfit = pos.pnlPct > 0;
-        const isLoss   = pos.pnlPct < 0;
+      {/* 成本价 & 盈亏详情 — 内联编辑 */}
+      {(() => {
+        const costBasis   = parseFloat(posForm.costBasis) || 0;
+        const shares      = parseFloat(posForm.shares) || 0;
+        const marketValue = shares * pos.currentPrice;
+        const pnlPct      = costBasis > 0 ? (pos.currentPrice - costBasis) / costBasis * 100 : 0;
+        const pnlAmount   = shares * (pos.currentPrice - costBasis);
+        const isProfit = pnlPct > 0;
+        const isLoss   = pnlPct < 0;
         const pnlColor = isProfit ? "text-green-500" : isLoss ? "text-red-500" : "text-muted-foreground";
         const pnlBg    = isProfit ? "bg-green-500/10 border-green-500/20"
                        : isLoss   ? "bg-red-500/10 border-red-500/20"
                        : "bg-secondary border-border";
+        const inputCls = "w-full px-2 py-1 rounded border border-input bg-background/80 text-sm font-semibold text-center focus:outline-none focus:ring-1 focus:ring-primary";
         return (
-          <div className={`rounded-lg border px-4 py-3 ${pnlBg}`}>
+          <div className={`rounded-lg border px-4 py-3 space-y-2 ${pnlBg}`}>
             <div className="grid grid-cols-3 gap-3 text-center">
               <div>
-                <div className="text-xs text-muted-foreground mb-0.5">成本价</div>
-                <div className="text-sm font-semibold">¥{pos.costBasis.toFixed(2)}</div>
+                <div className="text-xs text-muted-foreground mb-1">成本价</div>
+                <input type="number" value={posForm.costBasis}
+                  onChange={(e) => onFormChange({ ...posForm, costBasis: e.target.value })}
+                  className={inputCls} />
               </div>
               <div>
-                <div className="text-xs text-muted-foreground mb-0.5">现价</div>
-                <div className="text-sm font-semibold">¥{pos.currentPrice.toFixed(2)}</div>
+                <div className="text-xs text-muted-foreground mb-1">持股数</div>
+                <input type="number" value={posForm.shares}
+                  onChange={(e) => onFormChange({ ...posForm, shares: e.target.value })}
+                  className={inputCls} />
               </div>
               <div>
-                <div className="text-xs text-muted-foreground mb-0.5">浮动盈亏</div>
-                <div className={`text-sm font-bold ${pnlColor}`}>
-                  {isProfit ? "+" : ""}{pos.pnlPct.toFixed(2)}%
-                </div>
-                <div className={`text-xs font-medium ${pnlColor}`}>
-                  {isProfit ? "+" : ""}{formatMoney(pnlAmount)}
-                </div>
+                <div className="text-xs text-muted-foreground mb-1">配额</div>
+                <input type="number" value={posForm.quotaValue}
+                  onChange={(e) => onFormChange({ ...posForm, quotaValue: e.target.value })}
+                  placeholder="默认10万"
+                  className={inputCls + " placeholder:text-muted-foreground/50 placeholder:text-[10px]"} />
               </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3 text-center text-xs text-muted-foreground">
+              <div>现价 <span className="font-medium text-foreground">¥{pos.currentPrice.toFixed(2)}</span></div>
+              <div>市值 <span className="font-medium text-foreground">{formatMoney(marketValue)}</span></div>
+              <div className={pnlColor}>
+                {costBasis > 0 ? <>{isProfit ? "+" : ""}{pnlPct.toFixed(2)}% ({isProfit ? "+" : ""}{formatMoney(pnlAmount)})</> : "—"}
+              </div>
+            </div>
+            <div className="flex justify-end pt-1">
+              <button onClick={onSave}
+                className="px-3 py-1 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90">
+                保存
+              </button>
             </div>
           </div>
         );
@@ -886,49 +911,11 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
         </div>
       </div>
 
-      {/* Edit position */}
-      <div className="space-y-2">
-        <h3 className="text-sm font-semibold">持仓数据</h3>
-        {editing ? (
-          <div className="rounded-lg border border-border p-4 space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-muted-foreground">持仓数量</label>
-                <input type="number" value={posForm.shares} onChange={(e) => onFormChange({ ...posForm, shares: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm" />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">成本价</label>
-                <input type="number" value={posForm.costBasis} onChange={(e) => onFormChange({ ...posForm, costBasis: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm" />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">持仓市值 (自动计算)</label>
-                <div className="w-full mt-1 px-3 py-2 rounded-md bg-secondary text-sm text-muted-foreground">
-                  ¥{((parseFloat(posForm.shares) || 0) * pos.currentPrice).toFixed(2)}
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">配额 (可选)</label>
-                <input type="number" value={posForm.quotaValue} onChange={(e) => onFormChange({ ...posForm, quotaValue: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 rounded-md border border-input bg-background text-sm" placeholder="留空用默认" />
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={onSave} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90">保存</button>
-              <button onClick={onCancel} className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm">取消</button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex gap-2 flex-wrap">
-            <button onClick={onEdit} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm hover:bg-secondary/80">
-              <DollarSign className="w-4 h-4" /> 编辑持仓
-            </button>
-<button onClick={onRemoveFromPortfolio} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-secondary">
-              <Briefcase className="w-4 h-4" /> 移出仓位管理
-            </button>
-          </div>
-        )}
+      {/* Bottom actions */}
+      <div className="flex gap-2">
+        <button onClick={onRemoveFromPortfolio} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary">
+          <Briefcase className="w-3.5 h-3.5" /> 移出仓位管理
+        </button>
       </div>
     </div>
   );
