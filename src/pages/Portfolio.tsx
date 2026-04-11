@@ -377,7 +377,6 @@ const Portfolio = () => {
               onSave={() => handleSavePosition(selectedPos.symbol)}
               onCancel={() => setEditingPosition(false)}
               onFormChange={setPosForm}
-              onDelete={() => { removePosition(selectedPos.symbol); setSelectedSymbol(null); setMobileShowDetail(false); }}
               onRemoveFromPortfolio={async () => {
                 await togglePortfolio(selectedPos.symbol, false);
                 removePosition(selectedPos.symbol);
@@ -499,11 +498,10 @@ interface DetailPanelProps {
   onSave: () => void;
   onCancel: () => void;
   onFormChange: (form: { positionValue: string; costBasis: string; shares: string; quotaValue: string }) => void;
-  onDelete: () => void;
   onRemoveFromPortfolio: () => void;
 }
 
-function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSave, onCancel, onFormChange, onDelete, onRemoveFromPortfolio }: DetailPanelProps) {
+function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSave, onCancel, onFormChange, onRemoveFromPortfolio }: DetailPanelProps) {
   const quota = pos.effectiveQuota > 0 ? pos.effectiveQuota : totalAssets;
   const positionPct = quota > 0 ? (pos.currentPositionValue / quota * 100) : 0;
   const targetPct   = quota > 0 ? (pos.finalTargetValue   / quota * 100) : 0;
@@ -926,10 +924,7 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
             <button onClick={onEdit} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground text-sm hover:bg-secondary/80">
               <DollarSign className="w-4 h-4" /> 编辑持仓
             </button>
-            <button onClick={onDelete} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/10">
-              <Trash2 className="w-4 h-4" /> 删除持仓
-            </button>
-            <button onClick={onRemoveFromPortfolio} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-secondary">
+<button onClick={onRemoveFromPortfolio} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm text-muted-foreground hover:bg-secondary">
               <Briefcase className="w-4 h-4" /> 移出仓位管理
             </button>
           </div>
