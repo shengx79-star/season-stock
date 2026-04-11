@@ -554,7 +554,7 @@ function getAction(
 
 export function computePortfolio(
   totalAssets: number,
-  defaultQuotaPct: number,
+  defaultQuotaValue: number, // 默认配额（元），无自定义时使用
   inputs: PositionInput[],
   classifications: Map<string, ClassificationResult>,
   equityPeak?: number, // v3.1: 账户历史高点，用于计算组合回撤刹车
@@ -570,9 +570,6 @@ export function computePortfolio(
   const portfolioDrawdownPct = Math.max(0, (peak - totalAssets) / peak);
 
   // Layer 2: compute each stock's target
-  const singleNameSoftCap = totalAssets * 0.12;
-  const singleNameHardCap = totalAssets * 0.15;
-
   const rawResults: StockPositionResult[] = [];
 
   for (const input of inputs) {
@@ -586,8 +583,7 @@ export function computePortfolio(
     const downTurnCount = cls?.turnSignals?.downTurnCount ?? 0;
     const percentB      = cls?.indicators?.percentB       ?? null;
 
-    const baseQuota = input.quotaValue ?? totalAssets * (defaultQuotaPct / 100);
-    const effectiveQuota = Math.min(baseQuota, singleNameSoftCap);
+    const effectiveQuota = input.quotaValue ?? defaultQuotaValue;
 
     const sc = stageCoeffMap[stage] ?? 0;
     const cc = getConfidenceCoeff(quantConfidence);
@@ -596,8 +592,7 @@ export function computePortfolio(
     const cf = getConflictFactor(weeklyDailyConflict);
     const lf = getLiquidityFactor(input.liquidityLevel);
 
-    let rawTarget = effectiveQuota * sc * cc * vf * cf * lf;
-    rawTarget = Math.min(rawTarget, singleNameHardCap);
+    const rawTarget = effectiveQuota * sc * cc * vf * cf * lf;
 
     const pnlPct = input.costBasis > 0
       ? (input.currentPrice - input.costBasis) / input.costBasis * 100

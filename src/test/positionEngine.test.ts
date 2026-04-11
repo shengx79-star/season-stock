@@ -295,7 +295,7 @@ describe("P1: spring pilot vs confirmed entry phase", () => {
   it("spring + low confidence → pilot phase → executableTarget is 40% of rawTarget", () => {
     const cls = new Map([["A", makeClassification("spring", 0.55, { upTurnCount: 0 })]]);
     const input = makeInput("A", { quotaValue: 80_000 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     const pos = result.positions[0];
 
     expect(pos.springEntryPhase).toBe("pilot");
@@ -305,7 +305,7 @@ describe("P1: spring pilot vs confirmed entry phase", () => {
   it("spring + high confidence + upTurnCount>=2 → confirmed → full rawTarget", () => {
     const cls = new Map([["A", makeClassification("spring", 0.80, { upTurnCount: 2 })]]);
     const input = makeInput("A", { quotaValue: 80_000 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     const pos = result.positions[0];
 
     expect(pos.springEntryPhase).toBe("confirmed");
@@ -320,7 +320,7 @@ describe("P1: spring pilot vs confirmed entry phase", () => {
       costBasis: 90,           // price=100 → pnlPct=+11%
       currentPrice: 100,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     const pos = result.positions[0];
 
     expect(pos.springEntryPhase).toBe("confirmed");
@@ -332,7 +332,7 @@ describe("P1: spring pilot vs confirmed entry phase", () => {
       weeklyDailyConflict: true,
     })]]);
     const input = makeInput("A", { quotaValue: 80_000 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     const pos = result.positions[0];
 
     expect(pos.springEntryPhase).toBe("pilot");
@@ -342,7 +342,7 @@ describe("P1: spring pilot vs confirmed entry phase", () => {
     for (const stage of ["winter", "summer", "autumn"] as const) {
       const cls = new Map([["A", makeClassification(stage, 0.8)]]);
       const input = makeInput("A");
-      const result = computePortfolio(totalAssets, 3, [input], cls);
+      const result = computePortfolio(totalAssets, 100_000, [input], cls);
       expect(result.positions[0].springEntryPhase).toBeNull();
     }
   });
@@ -350,7 +350,7 @@ describe("P1: spring pilot vs confirmed entry phase", () => {
   it("spring pilot positionGap is capped by executableTargetValue, not rawTargetValue", () => {
     const cls = new Map([["A", makeClassification("spring", 0.55, { upTurnCount: 0 })]]);
     const input = makeInput("A", { quotaValue: 80_000, positionValue: 0 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     const pos = result.positions[0];
 
     // positionGap should equal executableTargetValue (since current=0)
@@ -373,7 +373,7 @@ describe("P2: winter entry filter", () => {
       percentB: 50,
     })]]);
     const input = makeInput("A", { positionValue: 0 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("hold");
   });
 
@@ -383,7 +383,7 @@ describe("P2: winter entry filter", () => {
       percentB: 50,
     })]]);
     const input = makeInput("A", { positionValue: 0, quotaValue: 80_000 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     // Winter stageCoeff=0.15, so target exists; upTurnCount=1 passes filter
     expect(result.positions[0].action).toBe("enter");
   });
@@ -394,7 +394,7 @@ describe("P2: winter entry filter", () => {
       percentB: 15,
     })]]);
     const input = makeInput("A", { positionValue: 0, quotaValue: 80_000 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("enter");
   });
 
@@ -404,7 +404,7 @@ describe("P2: winter entry filter", () => {
       percentB: 50,
     })]]);
     const input = makeInput("A", { positionValue: 0, quotaValue: 80_000 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("enter");
   });
 
@@ -420,7 +420,7 @@ describe("P2: winter entry filter", () => {
       currentPrice: 100,
       quotaValue: 80_000,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     // Should hold (already at target), not be blocked by the entry filter
     expect(result.positions[0].action).toBe("hold");
   });
@@ -442,7 +442,7 @@ describe("progressive exposure: add only when profitable", () => {
       atr20: 1,          // atrPct=1% → hardStop = max(5%,2%)=5%，-2.9%不触发
       quotaValue: 80_000,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("hold");
     expect(result.positions[0].notes.some(n => n.includes("浮盈授权"))).toBe(true);
   });
@@ -455,7 +455,7 @@ describe("progressive exposure: add only when profitable", () => {
       currentPrice: 100,
       quotaValue: 80_000,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("add");
   });
 
@@ -468,7 +468,7 @@ describe("progressive exposure: add only when profitable", () => {
       highestCloseSinceEntry: 100,  // no trailing stop breach
       quotaValue: 80_000,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("hold");
   });
 
@@ -480,7 +480,7 @@ describe("progressive exposure: add only when profitable", () => {
       currentPrice: 100,
       quotaValue: 80_000,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("hold");
   });
 });
@@ -501,7 +501,7 @@ describe("P3: pending autumn early defense", () => {
       highestCloseSinceEntry: 100,
       quotaValue: 80_000,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("reduce");
     expect(result.positions[0].notes.some(n => n.includes("downTurn"))).toBe(true);
   });
@@ -515,7 +515,7 @@ describe("P3: pending autumn early defense", () => {
       highestCloseSinceEntry: 100,
       quotaValue: 80_000,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     // Still reduces, but NOT via early-defense path
     expect(result.positions[0].notes.some(n => n.includes("downTurn"))).toBe(false);
   });
@@ -529,7 +529,7 @@ describe("P3: pending autumn early defense", () => {
       highestCloseSinceEntry: 100,
       quotaValue: 80_000,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     // Should add (profitable summer), not reduce
     expect(result.positions[0].action).not.toBe("reduce");
   });
@@ -541,7 +541,7 @@ describe("P3: pending autumn early defense", () => {
       costBasis: 100,
       currentPrice: 100,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("exit_autumn");
   });
 });
@@ -559,7 +559,7 @@ describe("P4: ATR environment brake on risk budget", () => {
       ["B", makeClassification("summer", 0.9)],
     ]);
     const input = makeInput("A", { setupScore: 3, atrEnvFactor: 1.0 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     const pos = result.positions[0];
     // healthy_bull: 0.008 × 1.0 × 1.0 × drawdown(1.0) × setup(1.0) × totalAssets
     const expected = totalAssets * 0.008 * 1.0 * 1.0 * 1.0 * 1.0;
@@ -574,8 +574,8 @@ describe("P4: ATR environment brake on risk budget", () => {
     const input1 = makeInput("A", { setupScore: 3, atrEnvFactor: 1.0 });
     const input2 = makeInput("A", { setupScore: 3, atrEnvFactor: 0.65 });
 
-    const r1 = computePortfolio(totalAssets, 3, [input1], cls);
-    const r2 = computePortfolio(totalAssets, 3, [input2], cls);
+    const r1 = computePortfolio(totalAssets, 100_000, [input1], cls);
+    const r2 = computePortfolio(totalAssets, 100_000, [input2], cls);
 
     expect(r2.positions[0].riskBudgetValue).toBeCloseTo(
       r1.positions[0].riskBudgetValue * 0.65,
@@ -588,8 +588,8 @@ describe("P4: ATR environment brake on risk budget", () => {
     const inputWithout = makeInput("A", { setupScore: 3 });  // no atrEnvFactor
     const inputWith1   = makeInput("A", { setupScore: 3, atrEnvFactor: 1.0 });
 
-    const r1 = computePortfolio(totalAssets, 3, [inputWithout], cls);
-    const r2 = computePortfolio(totalAssets, 3, [inputWith1], cls);
+    const r1 = computePortfolio(totalAssets, 100_000, [inputWithout], cls);
+    const r2 = computePortfolio(totalAssets, 100_000, [inputWith1], cls);
 
     expect(r1.positions[0].riskBudgetValue).toBeCloseTo(r2.positions[0].riskBudgetValue, 0);
   });
@@ -613,7 +613,7 @@ describe("P5: liquidity cap from ADV20", () => {
       liquidityLevel: "good",
       setupScore: 3,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].liquidityCappedValue).toBeCloseTo(20_000, 0);
   });
 
@@ -624,7 +624,7 @@ describe("P5: liquidity cap from ADV20", () => {
       liquidityLevel: "fair",
       setupScore: 3,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].liquidityCappedValue).toBeCloseTo(10_000, 0);
   });
 
@@ -635,7 +635,7 @@ describe("P5: liquidity cap from ADV20", () => {
       liquidityLevel: "none",
       setupScore: 3,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].liquidityCappedValue).toBe(0);
     expect(result.positions[0].allowedEntryValue).toBe(0);
   });
@@ -646,7 +646,7 @@ describe("P5: liquidity cap from ADV20", () => {
       setupScore: 3,
       // adv20Value not provided
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     // Output shows 0 (we store 0 for Infinity)
     expect(result.positions[0].liquidityCappedValue).toBe(0);
     // allowedEntryValue should NOT be limited by liquidity (uses Infinity internally)
@@ -665,7 +665,7 @@ describe("P5: liquidity cap from ADV20", () => {
       atr20: 0.5,           // tiny ATR → riskCapped will be large
       positionValue: 0,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     const pos = result.positions[0];
 
     // liquidityCap = 2,000 should be the binding constraint
@@ -688,42 +688,42 @@ describe("portfolio drawdown brake via equityPeak", () => {
   const input = makeInput("A", { setupScore: 3, atrEnvFactor: 1.0 });
 
   it("no equityPeak → drawdownFactor=1.0 (no brake)", () => {
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].drawdownFactor).toBe(1.0);
   });
 
   it("equityPeak = totalAssets → drawdownFactor=1.0", () => {
-    const result = computePortfolio(totalAssets, 3, [input], cls, totalAssets);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls, totalAssets);
     expect(result.positions[0].drawdownFactor).toBe(1.0);
   });
 
   it("5% drawdown → drawdownFactor=0.75", () => {
     const peak = totalAssets / (1 - 0.05); // currentEquity is 5% below peak
-    const result = computePortfolio(totalAssets, 3, [input], cls, peak);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls, peak);
     expect(result.positions[0].drawdownFactor).toBe(0.75);
   });
 
   it("8% drawdown → drawdownFactor=0.50", () => {
     const peak = totalAssets / (1 - 0.08);
-    const result = computePortfolio(totalAssets, 3, [input], cls, peak);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls, peak);
     expect(result.positions[0].drawdownFactor).toBe(0.5);
   });
 
   it("12% drawdown → drawdownFactor=0.25", () => {
     const peak = totalAssets / (1 - 0.12);
-    const result = computePortfolio(totalAssets, 3, [input], cls, peak);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls, peak);
     expect(result.positions[0].drawdownFactor).toBe(0.25);
   });
 
   it("equityPeak < totalAssets → treated as no drawdown (drawdownFactor=1.0)", () => {
     // If somehow equityPeak is below current equity, there's no drawdown
-    const result = computePortfolio(totalAssets, 3, [input], cls, totalAssets * 0.9);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls, totalAssets * 0.9);
     expect(result.positions[0].drawdownFactor).toBe(1.0);
   });
 
   it("drawdown reduces riskBudgetValue proportionally", () => {
-    const r_no_dd = computePortfolio(totalAssets, 3, [input], cls);
-    const r_8pct  = computePortfolio(totalAssets, 3, [input], cls, totalAssets / (1 - 0.08));
+    const r_no_dd = computePortfolio(totalAssets, 100_000, [input], cls);
+    const r_8pct  = computePortfolio(totalAssets, 100_000, [input], cls, totalAssets / (1 - 0.08));
 
     expect(r_8pct.positions[0].riskBudgetValue).toBeCloseTo(
       r_no_dd.positions[0].riskBudgetValue * 0.5,
@@ -745,7 +745,7 @@ describe("P0: risk budget values match v3.1 spec", () => {
     ]);
     const totalAssets = 1_000_000;
     const input = makeInput("A", { setupScore: 3, atrEnvFactor: 1.0 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     // expected = 1M × 0.008 × 1.0 × 1.0(atenv) × 1.0(drawdown) × 1.0(setup)
     expect(result.positions[0].riskBudgetValue).toBeCloseTo(8_000, 0);
   });
@@ -763,8 +763,8 @@ describe("P0: risk budget values match v3.1 spec", () => {
     const totalAssets = 1_000_000;
     const s3 = makeInput("A", { setupScore: 3, atrEnvFactor: 1.0 });
     const s2 = makeInput("A", { setupScore: 2, atrEnvFactor: 1.0 });
-    const r3 = computePortfolio(totalAssets, 3, [s3], cls);
-    const r2 = computePortfolio(totalAssets, 3, [s2], cls);
+    const r3 = computePortfolio(totalAssets, 100_000, [s3], cls);
+    const r2 = computePortfolio(totalAssets, 100_000, [s2], cls);
     expect(r2.positions[0].riskBudgetValue).toBeCloseTo(r3.positions[0].riskBudgetValue * 0.7, 0);
   });
 
@@ -773,8 +773,8 @@ describe("P0: risk budget values match v3.1 spec", () => {
     const totalAssets = 1_000_000;
     const s3 = makeInput("A", { setupScore: 3, atrEnvFactor: 1.0 });
     const s4 = makeInput("A", { setupScore: 4, atrEnvFactor: 1.0 });
-    const r3 = computePortfolio(totalAssets, 3, [s3], cls);
-    const r4 = computePortfolio(totalAssets, 3, [s4], cls);
+    const r3 = computePortfolio(totalAssets, 100_000, [s3], cls);
+    const r4 = computePortfolio(totalAssets, 100_000, [s4], cls);
     expect(r4.positions[0].riskBudgetValue).toBeCloseTo(r3.positions[0].riskBudgetValue * 1.15, 0);
   });
 });
@@ -794,7 +794,7 @@ describe("risk stop-loss and trailing stop", () => {
       currentPrice: 91.5, // -8.5% loss
       atr20: 1,           // atrPct=1% → hardStop = max(8%, 2.5%)=8%
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("force_exit");
   });
 
@@ -806,7 +806,7 @@ describe("risk stop-loss and trailing stop", () => {
       currentPrice: 94,  // -6%
       atr20: 1,          // atrPct=1% → hardStop=max(5%, 2%)=5%
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("force_exit");
   });
 
@@ -819,7 +819,7 @@ describe("risk stop-loss and trailing stop", () => {
       highestCloseSinceEntry: 100, // 10% drawdown from peak; default trailingStop=8%
       atr20: 1,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("take_profit");
   });
 
@@ -830,14 +830,14 @@ describe("risk stop-loss and trailing stop", () => {
       costBasis: 100,
       currentPrice: 100,
     });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("exit_autumn");
   });
 
   it("autumn without position → hold", () => {
     const cls = new Map([["A", makeClassification("autumn", 0.70)]]);
     const input = makeInput("A", { positionValue: 0 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].action).toBe("hold");
   });
 });
@@ -860,7 +860,7 @@ describe("portfolio-level scaling", () => {
     const inputs = Array.from({ length: 10 }, (_, i) =>
       makeInput(`S${i}`, { quotaValue: 150_000 }) // 10 × 150k = 1.5M > 85% cap
     );
-    const result = computePortfolio(totalAssets, 3, inputs, cls);
+    const result = computePortfolio(totalAssets, 100_000, inputs, cls);
     const totalTarget = result.positions.reduce((s, p) => s + p.finalTargetValue, 0);
     expect(totalTarget).toBeLessThanOrEqual(totalAssets * 0.85 + 1); // within cap
   });
@@ -875,7 +875,7 @@ describe("portfolio-level scaling", () => {
       makeInput("A", { quotaValue: 500_000 }),
       makeInput("B", { quotaValue: 500_000 }),
     ];
-    const result = computePortfolio(totalAssets, 3, inputs, cls);
+    const result = computePortfolio(totalAssets, 100_000, inputs, cls);
 
     for (const pos of result.positions) {
       // positionGap should equal executableTargetValue (positions are empty)
@@ -894,7 +894,7 @@ describe("edge cases", () => {
   const totalAssets = 1_000_000;
 
   it("empty inputs → empty positions", () => {
-    const result = computePortfolio(totalAssets, 3, [], new Map());
+    const result = computePortfolio(totalAssets, 100_000, [], new Map());
     expect(result.positions).toHaveLength(0);
     expect(result.totalPositionValue).toBe(0);
     expect(result.cashRemaining).toBe(totalAssets);
@@ -903,7 +903,7 @@ describe("edge cases", () => {
   it("stock not in classifications → unknown stage, action=hold", () => {
     const cls = new Map<string, ClassificationResult>();
     const input = makeInput("MISSING", { positionValue: 0 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].stage).toBe("unknown");
     expect(result.positions[0].action).toBe("hold");
   });
@@ -911,13 +911,13 @@ describe("edge cases", () => {
   it("currentPrice=0 → no division by zero crash", () => {
     const cls = new Map([["A", makeClassification("summer", 0.8)]]);
     const input = makeInput("A", { currentPrice: 0, positionValue: 0 });
-    expect(() => computePortfolio(totalAssets, 3, [input], cls)).not.toThrow();
+    expect(() => computePortfolio(totalAssets, 100_000, [input], cls)).not.toThrow();
   });
 
   it("atr20=0 → riskCappedValue uses minStopPct floor (no division by zero)", () => {
     const cls = new Map([["A", makeClassification("summer", 0.9)], ["B", makeClassification("summer", 0.9)]]);
     const input = makeInput("A", { atr20: 0, currentPrice: 100, setupScore: 3 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     // With atr20=0, perShareRisk = max(0, 100 × 5%) = 5
     // riskBudgetValue ≈ 8000 → shares = floor(8000/5) = 1600 → riskCapped = 160000
     expect(result.positions[0].riskCappedValue).toBeGreaterThan(0);
@@ -932,7 +932,7 @@ describe("edge cases", () => {
       makeInput("HOLD", { positionValue: 5_000, costBasis: 90, currentPrice: 100, quotaValue: 80_000 }),
       makeInput("STOP", { positionValue: 10_000, costBasis: 100, currentPrice: 91, atr20: 1 }),
     ];
-    const result = computePortfolio(totalAssets, 3, inputs, cls);
+    const result = computePortfolio(totalAssets, 100_000, inputs, cls);
     const priorities = result.positions.map(p => p.actionPriority);
     expect(priorities).toEqual([...priorities].sort((a, b) => a - b));
   });
@@ -940,7 +940,7 @@ describe("edge cases", () => {
   it("confidence=0 → setupScore=1 → riskBudgetValue=0 (blocks new position)", () => {
     const cls = new Map([["A", makeClassification("summer", 0.0)]]);
     const input = makeInput("A", { positionValue: 0 });
-    const result = computePortfolio(totalAssets, 3, [input], cls);
+    const result = computePortfolio(totalAssets, 100_000, [input], cls);
     expect(result.positions[0].riskBudgetValue).toBe(0);
     expect(result.positions[0].allowedEntryValue).toBe(0);
   });

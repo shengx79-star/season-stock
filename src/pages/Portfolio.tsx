@@ -83,7 +83,7 @@ const Portfolio = () => {
     // 市场层用全量股票（allClassifications）保证与 UI 展示一致
     // 个股数据仍用持仓股票（classifications）
     return computePortfolio(
-      config.totalAssets, config.defaultQuotaPct, positionInputs, classifications,
+      config.totalAssets, 100000, positionInputs, classifications,
       undefined,
       allClassifications.size > 0 ? allClassifications : undefined,
     );
@@ -298,7 +298,6 @@ const Portfolio = () => {
               editing={editingPosition}
               posForm={posForm}
               totalAssets={config?.totalAssets ?? 0}
-              defaultQuotaPct={config?.defaultQuotaPct ?? 3}
               market={portfolio?.market ?? null}
               onEdit={() => startEditPosition(selectedPos.symbol)}
               onSave={() => handleSavePosition(selectedPos.symbol)}
@@ -421,7 +420,6 @@ interface DetailPanelProps {
   editing: boolean;
   posForm: { positionValue: string; costBasis: string; shares: string; quotaValue: string };
   totalAssets: number;
-  defaultQuotaPct: number;
   market: MarketContext | null;
   onEdit: () => void;
   onSave: () => void;
@@ -431,7 +429,7 @@ interface DetailPanelProps {
   onRemoveFromPortfolio: () => void;
 }
 
-function DetailPanel({ pos, editing, posForm, totalAssets, defaultQuotaPct, market, onEdit, onSave, onCancel, onFormChange, onDelete, onRemoveFromPortfolio }: DetailPanelProps) {
+function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSave, onCancel, onFormChange, onDelete, onRemoveFromPortfolio }: DetailPanelProps) {
   const positionPct = totalAssets > 0 ? (pos.currentPositionValue / totalAssets * 100) : 0;
   const targetPct = totalAssets > 0 ? (pos.finalTargetValue / totalAssets * 100) : 0;
   const portfolioCap = market?.portfolioCap ?? 0;
@@ -452,16 +450,8 @@ function DetailPanel({ pos, editing, posForm, totalAssets, defaultQuotaPct, mark
   const setupScore = Math.min(5, Math.max(0, Math.round(pos.setupScore)));
   const setupFactor = setupFactorByScore[setupScore] ?? 1.0;
 
-  // P1: 单票硬上限（15%）突破检测
-  const singleNameHardCapPct = 15;
-  const hardCapBreached = positionPct > singleNameHardCapPct;
-  const hardCapExcessPct = positionPct - singleNameHardCapPct;
-
-  // P2: 有效配额来源判断
-  const defaultBaseQuota = totalAssets * (defaultQuotaPct / 100);
-  const softCap = totalAssets * 0.12;
-  const quotaIsDefault = Math.abs(pos.effectiveQuota - Math.min(defaultBaseQuota, softCap)) < 1;
-  const quotaHitSoftCap = defaultBaseQuota > softCap && Math.abs(pos.effectiveQuota - softCap) < 1;
+  // P2: 有效配额来源判断（无上限，直接用自定义或默认10万）
+  const quotaIsDefault = Math.abs(pos.effectiveQuota - 100000) < 1;
 
   // P3: 是否为减仓/退出场景
   const isExitScenario = pos.action === "reduce" || pos.action === "exit_autumn" || pos.action === "force_exit" || pos.action === "take_profit";
@@ -501,13 +491,6 @@ function DetailPanel({ pos, editing, posForm, totalAssets, defaultQuotaPct, mark
         ))}
       </div>
 
-      {/* P1: 单票硬上限突破警告 */}
-      {hardCapBreached && (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive space-y-0.5">
-          <p className="font-semibold">⚠️ 单票硬上限（{singleNameHardCapPct}%）已突破</p>
-          <p>当前 {positionPct.toFixed(1)}%，超限 {hardCapExcessPct.toFixed(1)}%——建议优先减至目标仓位</p>
-        </div>
-      )}
 
       {/* Position bar */}
       <div className="space-y-2">
@@ -575,11 +558,9 @@ function DetailPanel({ pos, editing, posForm, totalAssets, defaultQuotaPct, mark
           >
             <div className="space-y-0.5">
               <FlowItem label="有效配额" value={formatMoney(pos.effectiveQuota)}
-                hint={quotaHitSoftCap
-                  ? `触达单票软上限：base_quota(${formatMoney(defaultBaseQuota)}) > 软上限(总资产×12%)，取 min = ${formatMoney(softCap)}`
-                  : quotaIsDefault
-                    ? `未配置 quota，使用默认 quota = 总资产×${defaultQuotaPct}% = ${formatMoney(defaultBaseQuota)}；effective_quota = min(base_quota, 单票软上限12%)`
-                    : `自定义 quota；effective_quota = min(自定义额度, 总资产×12% = ${formatMoney(softCap)})`} />
+                hint={quotaIsDefault
+                  ? "未配置自定义 quota，使用默认配额 ¥10万"
+                  : `自定义 quota = ${formatMoney(pos.effectiveQuota)}，在编辑持仓中设置`} />
               <FlowItem label={`季节系数 (${pos.stage})`} value={`×${pos.stageCoeff}`}
                 hint={pos.stage === "winter" ? "冬季0.15：小仓试错，最多配15%配额"
                   : pos.stage === "spring" ? "春季0.45：启动建仓，配45%配额"
