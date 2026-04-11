@@ -494,6 +494,40 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
         ))}
       </div>
 
+      {/* 成本价 & 盈亏详情 */}
+      {pos.costBasis > 0 && pos.currentPositionValue > 0 && (() => {
+        const pnlRatio = pos.pnlPct / 100;
+        const pnlAmount = pos.currentPositionValue - pos.currentPositionValue / (1 + pnlRatio);
+        const isProfit = pos.pnlPct > 0;
+        const isLoss   = pos.pnlPct < 0;
+        const pnlColor = isProfit ? "text-[hsl(var(--summer))]" : isLoss ? "text-destructive" : "text-muted-foreground";
+        const pnlBg    = isProfit ? "bg-[hsl(var(--summer))/8]  border-[hsl(var(--summer))/20]"
+                       : isLoss   ? "bg-destructive/8 border-destructive/20"
+                       : "bg-secondary border-border";
+        return (
+          <div className={`rounded-lg border px-4 py-3 ${pnlBg}`}>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <div className="text-xs text-muted-foreground mb-0.5">成本价</div>
+                <div className="text-sm font-semibold">¥{pos.costBasis.toFixed(2)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-0.5">现价</div>
+                <div className="text-sm font-semibold">¥{pos.currentPrice.toFixed(2)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground mb-0.5">浮动盈亏</div>
+                <div className={`text-sm font-bold ${pnlColor}`}>
+                  {isProfit ? "+" : ""}{pos.pnlPct.toFixed(2)}%
+                </div>
+                <div className={`text-xs font-medium ${pnlColor}`}>
+                  {isProfit ? "+" : ""}{formatMoney(pnlAmount)}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Position bar */}
       <div className="space-y-2">
