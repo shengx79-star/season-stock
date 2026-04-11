@@ -504,11 +504,10 @@ function getAction(
 
   // Enter / Add
   if (gap > threshold) {
-    const isConfirmed = stage === "spring" || stage === "summer";
-
-    // P2: 冬季入场过滤 — 至少满足一项才允许建仓
+    // P2: 冬季入场过滤 — 至少满足一项才允许新建仓
+    let winterOK = true;
     if (stage === "winter" && currentValue === 0) {
-      const winterOK =
+      winterOK =
         upTurnCount >= 1 ||
         (percentB !== null && percentB <= 20) ||
         quantConfidence >= 0.60;
@@ -518,7 +517,10 @@ function getAction(
       }
     }
 
-    if (isConfirmed) {
+    const canEnter = stage === "spring" || stage === "summer" ||
+                     (stage === "winter" && winterOK);
+
+    if (canEnter) {
       if (currentValue === 0) {
         notes.push("🌱 符合建仓条件");
         return { action: "enter", priority: 3, notes };
