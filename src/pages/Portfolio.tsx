@@ -497,6 +497,7 @@ function DetailPanel({ pos, editing, posForm, totalAssets, market, onEdit, onSav
 
       {/* Position bar */}
       <div className="space-y-2">
+        <PositionBar label="配额（基准）" value={pos.effectiveQuota} pct={100} color="bg-border" />
         <PositionBar label="当前仓位" value={pos.currentPositionValue} pct={positionPct} color="bg-muted-foreground" />
         <PositionBar label="目标仓位" value={pos.finalTargetValue} pct={targetPct} color="bg-primary" />
         <div className="flex items-center justify-between text-xs text-muted-foreground">
