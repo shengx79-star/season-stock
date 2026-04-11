@@ -387,11 +387,16 @@ function LayerStep({
   );
 }
 
-function FlowItem({ label, value, color, emphasis }: { label: string; value: string; color?: string; emphasis?: boolean }) {
+function FlowItem({ label, value, color, emphasis, hint }: { label: string; value: string; color?: string; emphasis?: boolean; hint?: string }) {
   return (
-    <div className="flex items-center justify-between py-1">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
-      <span className={`text-xs font-medium ${emphasis ? "font-bold" : ""} ${color || ""}`}>{value}</span>
+    <div className="py-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-muted-foreground">{label}</span>
+        <span className={`text-xs font-medium ${emphasis ? "font-bold" : ""} ${color || ""}`}>{value}</span>
+      </div>
+      {hint && (
+        <p className="text-[10px] text-muted-foreground/70 mt-0.5 leading-snug pl-0.5">{hint}</p>
+      )}
     </div>
   );
 }
