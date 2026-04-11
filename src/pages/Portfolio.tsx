@@ -253,12 +253,13 @@ const Portfolio = () => {
                 <span className="text-xs font-medium flex items-center gap-1">
                   <TrendingUp className="w-3 h-3" /> {regimeLabels[portfolio.market.regime]}
                 </span>
-                <span className={`text-sm font-bold ${
+                <span className={`text-sm font-bold flex items-center gap-1 ${
                   portfolio.market.temperature > 60 ? "text-[hsl(var(--summer))]"
                   : portfolio.market.temperature > 40 ? "text-[hsl(var(--autumn))]"
                   : portfolio.market.temperature > 20 ? "text-[hsl(var(--spring))]"
                   : "text-primary"
                 }`}>
+                  <span className="text-xs font-normal text-muted-foreground">市场热度</span>
                   {Math.round(portfolio.market.temperature)}°
                 </span>
               </div>
