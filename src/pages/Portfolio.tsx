@@ -1086,46 +1086,76 @@ function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, 
 // =============================================
 
 function RiskReturnBar({ pos }: { pos: StockPositionResult }) {
-  const risk = Math.abs(pos.hardStopPct ?? 8);
-  const upside = Math.min(pos.quantConfidence * pos.stageCoeff * 20, 40);
-  const total = risk + upside;
-  const riskPct = total > 0 ? (risk / total) * 100 : 50;
-  const pnlPct = pos.pnlPct;
-  // Indicator position: entry (cost basis) = riskPct from left; shift by current pnl
-  const indicatorPos = total > 0 ? Math.max(2, Math.min(98, riskPct + (pnlPct / total) * 100)) : riskPct;
+  const stopDist = Math.abs(pos.hardStopPct ?? 8);   // 止损距成本的距离（正数，如 9.7）
+  const pnlPct   = pos.pnlPct;                        // 当前盈亏%（相对成本，可正可负）
+  const hasCost  = pos.costBasis > 0;
+
+  // Bar 范围：从止损 (-stopDist) 到 右侧留出与止损等宽的缓冲
+  // 总宽 = stopDist + max(pnlPct, 0) + stopDist * 0.5（右侧空间）
+  const rightPad = stopDist * 0.5;
+  const total    = stopDist + Math.max(pnlPct, 0) + rightPad;
+
+  // 各区段占总宽的百分比
+  const redWidthPct   = (stopDist / total) * 100;                        // 红区（止损→成本）
+  const greenWidthPct = hasCost ? (Math.max(pnlPct, 0) / total) * 100 : 0; // 绿区（成本→当前，仅盈利时）
+
+  // 圆点位置（从左算起）
+  const dotPos = hasCost
+    ? Math.max(2, Math.min(97, ((stopDist + pnlPct) / total) * 100))
+    : redWidthPct;
+
+  // 距止损的缓冲 = 当前价相对止损价的距离（从成本反推）
+  const bufferPct = stopDist + pnlPct;  // 若 pnlPct=+4.6, stop=9.7 → 缓冲14.3%
 
   return (
     <div className="rounded-lg bg-secondary/50 p-3">
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1.5">
-        <span className="text-red-500/80">止损 -{risk.toFixed(1)}%</span>
-        <span className="font-medium text-xs text-foreground/70">风险 / 收益</span>
-        <span className="text-green-500/80">预估 +{upside.toFixed(1)}%</span>
+      {/* 顶部标签行 */}
+      <div className="flex items-center justify-between text-[10px] mb-1.5">
+        <span className="text-muted-foreground">止损距成本 <span className="text-red-500 font-medium">-{stopDist.toFixed(1)}%</span></span>
+        {hasCost && (
+          <span className={`font-semibold text-xs ${pnlPct > 0 ? "text-green-500" : pnlPct < 0 ? "text-red-500" : "text-muted-foreground"}`}>
+            当前 {pnlPct > 0 ? "+" : ""}{pnlPct.toFixed(1)}%
+          </span>
+        )}
+        <span className="text-muted-foreground">
+          距止损 <span className={`font-medium ${bufferPct > stopDist ? "text-green-500" : bufferPct > 0 ? "text-[hsl(var(--autumn))]" : "text-red-500"}`}>
+            {bufferPct > 0 ? "+" : ""}{bufferPct.toFixed(1)}%
+          </span>
+        </span>
       </div>
-      <div className="relative h-3 rounded-full overflow-hidden flex">
-        <div className="bg-red-500/20 rounded-l-full" style={{ width: `${riskPct}%` }} />
-        <div className="bg-green-500/20 flex-1 rounded-r-full" />
-        {/* Entry (cost) marker */}
-        <div className="absolute top-0 bottom-0 w-px bg-border/80" style={{ left: `${riskPct}%` }} />
-        {/* Current P&L indicator dot */}
-        {pos.costBasis > 0 && (
+
+      {/* 进度条 */}
+      <div className="relative h-3 rounded-full bg-secondary overflow-hidden flex">
+        {/* 红区：止损 → 成本 */}
+        <div className="bg-red-500/25 h-full" style={{ width: `${redWidthPct}%` }} />
+        {/* 绿区：成本 → 当前（仅盈利时显示） */}
+        {greenWidthPct > 0 && (
+          <div className="bg-green-500/30 h-full" style={{ width: `${greenWidthPct}%` }} />
+        )}
+        {/* 余下空白区 */}
+        <div className="flex-1 h-full" />
+
+        {/* 成本线（红绿分界） */}
+        <div className="absolute top-0 bottom-0 w-px bg-border" style={{ left: `${redWidthPct}%` }} />
+
+        {/* 当前价圆点 */}
+        {hasCost && (
           <div
             className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-background shadow-sm ${
               pnlPct > 0 ? "bg-green-500" : pnlPct < 0 ? "bg-red-500" : "bg-muted-foreground"
             }`}
-            style={{ left: `calc(${indicatorPos}% - 6px)` }}
+            style={{ left: `calc(${dotPos}% - 6px)` }}
           />
         )}
       </div>
-      <div className="flex items-center justify-between text-[10px] mt-1.5">
-        <span className="text-red-500/60">风险区</span>
-        {pos.costBasis > 0 ? (
-          <span className={`font-semibold ${pnlPct > 0 ? "text-green-500" : pnlPct < 0 ? "text-red-500" : "text-muted-foreground"}`}>
-            当前 {pnlPct > 0 ? "+" : ""}{pnlPct.toFixed(1)}%
-          </span>
-        ) : (
-          <span className="text-muted-foreground/60 text-[9px]">未建仓</span>
+
+      {/* 底部轴标签 */}
+      <div className="relative text-[9px] text-muted-foreground/60 mt-1 h-3">
+        <span className="absolute left-0">止损</span>
+        <span className="absolute" style={{ left: `calc(${redWidthPct}% - 10px)` }}>成本</span>
+        {hasCost && pnlPct !== 0 && (
+          <span className="absolute" style={{ left: `calc(${dotPos}% - 8px)` }}>现价</span>
         )}
-        <span className="text-green-500/60">潜力区 (估算)</span>
       </div>
     </div>
   );
