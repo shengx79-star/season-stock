@@ -61,6 +61,7 @@ const Portfolio = () => {
   const [filterSeason, setFilterSeason] = useState<"all" | "spring" | "summer" | "autumn" | "winter">("all");
   const [sortBy, setSortBy] = useState<"default" | "value" | "pnl">("default");
   const [sortDesc, setSortDesc] = useState(true);
+  const [viewMode, setViewMode] = useState<"list" | "queue">("list");
 
   const positionInputs: PositionInput[] = useMemo(() => {
     return portfolioStocks.map((stock) => {
@@ -176,6 +177,19 @@ const Portfolio = () => {
     return filtered;
   }, [portfolio, filterMarket, filterSeason, sortBy, sortDesc]);
 
+  // Portfolio summary stats
+  const portfolioStats = useMemo(() => {
+    if (!portfolio || !config) return null;
+    const totalCost = portfolio.positions.reduce((s, p) => {
+      if (p.currentPrice <= 0) return s;
+      return s + p.costBasis * (p.currentPositionValue / p.currentPrice);
+    }, 0);
+    const totalPnl = portfolio.totalPositionValue - totalCost;
+    const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+    const usedPct = config.totalAssets > 0 ? (portfolio.totalPositionValue / config.totalAssets) * 100 : 0;
+    return { totalCost, totalPnl, totalPnlPct, usedPct };
+  }, [portfolio, config]);
+
   if (portfolioLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -263,15 +277,46 @@ const Portfolio = () => {
                   {Math.round(portfolio.market.temperature)}°
                 </span>
               </div>
-              <div className="flex gap-1 text-[10px] flex-wrap">
-                <span className="px-1.5 py-0.5 rounded bg-secondary">仓位上限 {Math.round(portfolio.market.portfolioCap * 100)}%</span>
+              <div className="flex gap-1 text-[10px] flex-wrap mb-2">
+                <span className="px-1.5 py-0.5 rounded bg-secondary">上限 {Math.round(portfolio.market.portfolioCap * 100)}%</span>
                 <span className="px-1.5 py-0.5 rounded bg-secondary">持仓 {formatMoney(portfolio.totalPositionValue)}</span>
+                {portfolioStats && portfolioStats.totalCost > 0 && (
+                  <span className={`px-1.5 py-0.5 rounded font-medium ${
+                    portfolioStats.totalPnl > 0 ? "bg-green-500/10 text-green-500"
+                    : portfolioStats.totalPnl < 0 ? "bg-red-500/10 text-red-500"
+                    : "bg-secondary text-muted-foreground"
+                  }`}>
+                    {portfolioStats.totalPnl > 0 ? "+" : ""}{formatMoney(portfolioStats.totalPnl)}
+                    {" "}({portfolioStats.totalPnlPct > 0 ? "+" : ""}{portfolioStats.totalPnlPct.toFixed(1)}%)
+                  </span>
+                )}
               </div>
+              {/* 已用仓位进度条 */}
+              {portfolioStats && (
+                <div>
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+                    <span>已用仓位</span>
+                    <span>{portfolioStats.usedPct.toFixed(1)}% / {Math.round(portfolio.market.portfolioCap * 100)}%上限</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-secondary overflow-hidden relative">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        portfolioStats.usedPct > portfolio.market.portfolioCap * 100 * 0.9
+                          ? "bg-[hsl(var(--summer))]"
+                          : portfolioStats.usedPct > portfolio.market.portfolioCap * 100 * 0.6
+                          ? "bg-[hsl(var(--autumn))]"
+                          : "bg-[hsl(var(--spring))]"
+                      }`}
+                      style={{ width: `${Math.min(portfolioStats.usedPct / (portfolio.market.portfolioCap * 100) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {/* Filter & sort chips */}
-          <div className="px-3 py-2 border-b border-border flex flex-wrap gap-1.5">
+          <div className="px-3 py-2 border-b border-border flex flex-wrap gap-1.5 items-center">
             {(["A", "HK", "US"] as const).map((m) => (
               <button key={m} onClick={() => setFilterMarket(filterMarket === m ? "all" : m)}
                 className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
@@ -306,63 +351,172 @@ const Portfolio = () => {
                 <span className="text-[9px] opacity-60">{sortBy === key ? (sortDesc ? "↓" : "↑") : "↕"}</span>
               </button>
             ))}
+            <div className="w-px bg-border self-stretch mx-0.5" />
+            <button
+              onClick={() => setViewMode(viewMode === "queue" ? "list" : "queue")}
+              className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                viewMode === "queue" ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              待办
+            </button>
           </div>
 
           {/* Stock list */}
           <div className="flex-1 overflow-y-auto">
-            {filteredPositions.map((pos) => (
-              <button
-                key={pos.symbol}
-                onClick={() => { setSelectedSymbol(pos.symbol); setEditingPosition(false); setMobileShowDetail(true); }}
-                className={`w-full px-3 py-2.5 text-left border-l-3 border-b border-border transition-colors ${
-                  selectedSymbol === pos.symbol
-                    ? `bg-primary/5 ${actionBorderColors[pos.action]}`
-                    : `hover:bg-secondary/50 border-l-transparent`
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium truncate">{pos.name}</span>
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${actionColors[pos.action]}`}>
-                        {actionLabels[pos.action]}
-                      </span>
+            {viewMode === "queue" ? (
+              /* ── 待办优先级队列视图 ── */
+              (() => {
+                const urgent   = filteredPositions.filter(p => p.action === "force_exit" || p.action === "take_profit");
+                const exits    = filteredPositions.filter(p => p.action === "exit_autumn" || p.action === "reduce");
+                const buys     = filteredPositions.filter(p => p.action === "enter" || p.action === "add");
+                const watching = filteredPositions.filter(p => p.action === "hold");
+
+                const groups = [
+                  { key: "urgent",   dot: "bg-red-500",    label: "立即执行", items: urgent },
+                  { key: "exits",    dot: "bg-orange-400", label: "减仓/退出", items: exits },
+                  { key: "buys",     dot: "bg-[hsl(var(--spring))]", label: "建仓/加仓", items: buys },
+                  { key: "watching", dot: "bg-muted-foreground",     label: "持有观察", items: watching },
+                ].filter(g => g.items.length > 0);
+
+                if (groups.length === 0) {
+                  return (
+                    <div className="p-6 text-center text-muted-foreground text-xs">当前筛选条件下无待办</div>
+                  );
+                }
+
+                return groups.map(group => (
+                  <div key={group.key}>
+                    <div className="px-3 py-1.5 flex items-center gap-2 bg-secondary/40 border-b border-border">
+                      <span className={`w-2 h-2 rounded-full ${group.dot}`} />
+                      <span className="text-[11px] font-semibold text-muted-foreground">{group.label}</span>
+                      <span className="text-[10px] text-muted-foreground/60">{group.items.length}只</span>
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[11px] text-muted-foreground">{pos.symbol}</span>
-                      {pos.stage !== "unknown" && (
-                        <span className="text-[11px] text-muted-foreground">
-                          {seasonEmojis[pos.stage]} {seasonLabels[pos.stage]}
+                    {group.items.map(pos => (
+                      <button
+                        key={pos.symbol}
+                        onClick={() => { setSelectedSymbol(pos.symbol); setEditingPosition(false); setMobileShowDetail(true); }}
+                        className={`w-full px-3 py-2 text-left border-l-3 border-b border-border transition-colors ${
+                          selectedSymbol === pos.symbol
+                            ? `bg-primary/5 ${actionBorderColors[pos.action]}`
+                            : `hover:bg-secondary/50 border-l-transparent`
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm font-medium truncate">{pos.name}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${actionColors[pos.action]}`}>
+                                {actionLabels[pos.action]}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-muted-foreground">
+                              <span>{seasonEmojis[pos.stage]} {pos.stage !== "unknown" ? seasonLabels[pos.stage] : ""}</span>
+                              {pos.springEntryPhase && (
+                                <span>{pos.springEntryPhase === "pilot" ? "先锋" : "确认"}</span>
+                              )}
+                              {pos.costBasis > 0 && (
+                                <span className={`font-medium ${pos.pnlPct > 0 ? "text-green-500" : pos.pnlPct < 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                                  {pos.pnlPct > 0 ? "+" : ""}{pos.pnlPct.toFixed(1)}%
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0 ml-2">
+                            {(pos.action === "enter" || pos.action === "add") && pos.allowedEntryValue > 0 ? (
+                              <div className="text-xs font-semibold text-[hsl(var(--spring))]">
+                                +{formatMoney(pos.allowedEntryValue)}
+                              </div>
+                            ) : (pos.action === "reduce" || pos.action === "exit_autumn" || pos.action === "force_exit" || pos.action === "take_profit") && pos.positionGap < 0 ? (
+                              <div className="text-xs font-semibold text-[hsl(var(--summer))]">
+                                {formatMoney(pos.positionGap)}
+                              </div>
+                            ) : null}
+                            <div className="text-[10px] text-muted-foreground">目标 {formatMoney(pos.finalTargetValue)}</div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ));
+              })()
+            ) : (
+              /* ── 普通列表视图 ── */
+              filteredPositions.map((pos) => (
+                <button
+                  key={pos.symbol}
+                  onClick={() => { setSelectedSymbol(pos.symbol); setEditingPosition(false); setMobileShowDetail(true); }}
+                  className={`w-full px-3 py-2.5 text-left border-l-3 border-b border-border transition-colors ${
+                    selectedSymbol === pos.symbol
+                      ? `bg-primary/5 ${actionBorderColors[pos.action]}`
+                      : `hover:bg-secondary/50 border-l-transparent`
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium truncate">{pos.name}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${actionColors[pos.action]}`}>
+                          {actionLabels[pos.action]}
                         </span>
-                      )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[11px] text-muted-foreground">{pos.symbol}</span>
+                        {pos.stage !== "unknown" && (
+                          <span className="text-[11px] text-muted-foreground">
+                            {seasonEmojis[pos.stage]} {seasonLabels[pos.stage]}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5 text-[11px]">
+                        <span className="text-muted-foreground">现价 ¥{pos.currentPrice.toFixed(2)}</span>
+                        {pos.currentPositionValue > 0 && (
+                          <span className="text-muted-foreground">持仓 {formatMoney(pos.currentPositionValue)}</span>
+                        )}
+                        {pos.costBasis > 0 && (
+                          <span className={`font-medium ${pos.pnlPct > 0 ? "text-green-500" : pos.pnlPct < 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                            {pos.pnlPct > 0 ? "+" : ""}{pos.pnlPct.toFixed(1)}%
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5 text-[11px]">
-                      <span className="text-muted-foreground">现价 ¥{pos.currentPrice.toFixed(2)}</span>
-                      {pos.currentPositionValue > 0 && (
-                        <span className="text-muted-foreground">持仓 {formatMoney(pos.currentPositionValue)}</span>
-                      )}
-                      {pos.costBasis > 0 && (
-                        <span className={`font-medium ${pos.pnlPct > 0 ? "text-green-500" : pos.pnlPct < 0 ? "text-red-500" : "text-muted-foreground"}`}>
-                          {pos.pnlPct > 0 ? "+" : ""}{pos.pnlPct.toFixed(1)}%
-                        </span>
-                      )}
+                    <div className="text-right shrink-0 ml-2">
+                      <div className={`text-xs font-medium ${
+                        pos.positionGap > 0 ? "text-[hsl(var(--summer))]"
+                        : pos.positionGap < 0 ? "text-[hsl(var(--spring))]"
+                        : "text-muted-foreground"
+                      }`}>
+                        {pos.positionGap > 0 ? "+" : ""}{formatMoney(pos.positionGap)}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        目标 {formatMoney(pos.finalTargetValue)}
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right shrink-0 ml-2">
-                    <div className={`text-xs font-medium ${
-                      pos.positionGap > 0 ? "text-[hsl(var(--summer))]"
-                      : pos.positionGap < 0 ? "text-[hsl(var(--spring))]"
-                      : "text-muted-foreground"
-                    }`}>
-                      {pos.positionGap > 0 ? "+" : ""}{formatMoney(pos.positionGap)}
+                  {/* 迷你仓位进度条：当前持仓 vs 目标 */}
+                  {pos.effectiveQuota > 0 && (
+                    <div className="mt-1.5 relative h-1 rounded-full bg-secondary overflow-hidden">
+                      <div
+                        className={`absolute h-full rounded-full transition-all ${
+                          pos.currentPositionValue < pos.finalTargetValue * 0.95
+                            ? "bg-[hsl(var(--spring))]"
+                            : pos.currentPositionValue > pos.finalTargetValue * 1.05
+                            ? "bg-[hsl(var(--summer))]"
+                            : "bg-muted-foreground"
+                        }`}
+                        style={{ width: `${Math.min((pos.currentPositionValue / pos.effectiveQuota) * 100, 100)}%` }}
+                      />
+                      {pos.finalTargetValue > 0 && (
+                        <div
+                          className="absolute top-0 bottom-0 w-0.5 bg-primary/60"
+                          style={{ left: `${Math.min((pos.finalTargetValue / pos.effectiveQuota) * 100, 100)}%` }}
+                        />
+                      )}
                     </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      目标 {formatMoney(pos.finalTargetValue)}
-                    </div>
-                  </div>
-                </div>
-              </button>
-            ))}
+                  )}
+                </button>
+              ))
+            )}
             {!portfolio || portfolio.positions.length === 0 ? (
               <div className="p-6 text-center text-muted-foreground text-xs">
                 请在四季分析页面标记股票进入仓位管理
@@ -572,6 +726,11 @@ function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, 
           <p key={i} className="text-sm">{note}</p>
         ))}
       </div>
+
+      {/* 风险/收益指示条 */}
+      {pos.hardStopPct != null && (
+        <RiskReturnBar pos={pos} />
+      )}
 
       {/* 成本价 & 盈亏详情 — 内联编辑 */}
       {(() => {
@@ -925,6 +1084,52 @@ function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, 
 // =============================================
 // Shared sub-components
 // =============================================
+
+function RiskReturnBar({ pos }: { pos: StockPositionResult }) {
+  const risk = Math.abs(pos.hardStopPct ?? 8);
+  const upside = Math.min(pos.quantConfidence * pos.stageCoeff * 20, 40);
+  const total = risk + upside;
+  const riskPct = total > 0 ? (risk / total) * 100 : 50;
+  const pnlPct = pos.pnlPct;
+  // Indicator position: entry (cost basis) = riskPct from left; shift by current pnl
+  const indicatorPos = total > 0 ? Math.max(2, Math.min(98, riskPct + (pnlPct / total) * 100)) : riskPct;
+
+  return (
+    <div className="rounded-lg bg-secondary/50 p-3">
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1.5">
+        <span className="text-red-500/80">止损 -{risk.toFixed(1)}%</span>
+        <span className="font-medium text-xs text-foreground/70">风险 / 收益</span>
+        <span className="text-green-500/80">预估 +{upside.toFixed(1)}%</span>
+      </div>
+      <div className="relative h-3 rounded-full overflow-hidden flex">
+        <div className="bg-red-500/20 rounded-l-full" style={{ width: `${riskPct}%` }} />
+        <div className="bg-green-500/20 flex-1 rounded-r-full" />
+        {/* Entry (cost) marker */}
+        <div className="absolute top-0 bottom-0 w-px bg-border/80" style={{ left: `${riskPct}%` }} />
+        {/* Current P&L indicator dot */}
+        {pos.costBasis > 0 && (
+          <div
+            className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-background shadow-sm ${
+              pnlPct > 0 ? "bg-green-500" : pnlPct < 0 ? "bg-red-500" : "bg-muted-foreground"
+            }`}
+            style={{ left: `calc(${indicatorPos}% - 6px)` }}
+          />
+        )}
+      </div>
+      <div className="flex items-center justify-between text-[10px] mt-1.5">
+        <span className="text-red-500/60">风险区</span>
+        {pos.costBasis > 0 ? (
+          <span className={`font-semibold ${pnlPct > 0 ? "text-green-500" : pnlPct < 0 ? "text-red-500" : "text-muted-foreground"}`}>
+            当前 {pnlPct > 0 ? "+" : ""}{pnlPct.toFixed(1)}%
+          </span>
+        ) : (
+          <span className="text-muted-foreground/60 text-[9px]">未建仓</span>
+        )}
+        <span className="text-green-500/60">潜力区 (估算)</span>
+      </div>
+    </div>
+  );
+}
 
 function PositionBar({ label, value, pct, color }: { label: string; value: number; pct: number; color: string }) {
   return (
