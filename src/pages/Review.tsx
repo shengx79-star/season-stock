@@ -1,0 +1,468 @@
+import { useState, useEffect, useMemo } from "react";
+import { AppNav } from "@/components/AppNav";
+import { usePositionSnapshots, type PositionSnapshot } from "@/hooks/usePositionSnapshots";
+import { fetchKlineData } from "@/lib/alltickService";
+import { seasonEmojis } from "@/lib/stockData";
+import { Loader2, TrendingUp, TrendingDown, Minus, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import type { Candle } from "@/lib/stockClassifier";
+
+// ─── types ────────────────────────────────────────────────
+
+type OutcomeStatus = "correct" | "wrong" | "neutral" | "pending";
+
+interface SnapshotOutcome {
+  snapshot: PositionSnapshot;
+  priceChangePct: number | null;   // % change from snapshot price to 5 days later
+  stopHit: boolean | null;
+  status: OutcomeStatus;           // overall correctness
+}
+
+interface ParamSuggestion {
+  title: string;
+  detail: string;
+  sampleCount: number;
+  accuracyPct: number;
+}
+
+// ─── helpers ──────────────────────────────────────────────
+
+const actionLabels: Record<string, string> = {
+  force_exit: "强制退出", reduce: "减仓", exit_autumn: "秋季退出",
+  take_profit: "止盈", enter: "建仓", add: "加仓", hold: "持有",
+};
+
+const actionColors: Record<string, string> = {
+  force_exit: "bg-destructive text-destructive-foreground",
+  reduce: "bg-[hsl(var(--autumn))] text-white",
+  exit_autumn: "bg-[hsl(var(--autumn))] text-white",
+  take_profit: "bg-[hsl(var(--summer))] text-white",
+  enter: "bg-[hsl(var(--spring))] text-white",
+  add: "bg-primary text-primary-foreground",
+  hold: "bg-secondary text-secondary-foreground",
+};
+
+const EVAL_DAYS = 5; // how many trading days after snapshot to evaluate
+
+/** Find the index of the first kline on or after a given date string */
+function findDateIndex(klines: Candle[], date: string): number {
+  // klines are ascending by date
+  return klines.findIndex(k => k.date >= date);
+}
+
+function computeOutcome(snap: PositionSnapshot, klines: Candle[]): SnapshotOutcome {
+  const base: SnapshotOutcome = {
+    snapshot: snap,
+    priceChangePct: null,
+    stopHit: null,
+    status: "pending",
+  };
+
+  const idx = findDateIndex(klines, snap.snapshotDate);
+  if (idx < 0 || idx + EVAL_DAYS >= klines.length) return base; // not enough future data
+
+  const entryPrice = snap.currentPrice;
+  const futureClose = klines[idx + EVAL_DAYS].close;
+  const priceChangePct = entryPrice > 0 ? (futureClose - entryPrice) / entryPrice * 100 : null;
+
+  // Stop hit: did any bar in the window breach the stop level?
+  const stopPct = snap.hardStopPct ?? snap.trailingStopPct ?? null;
+  const stopHit = stopPct != null
+    ? klines.slice(idx, idx + EVAL_DAYS).some(k => k.low < entryPrice * (1 - stopPct / 100))
+    : false;
+
+  const isEnter = snap.action === "enter" || snap.action === "add";
+  const isExit  = snap.action === "reduce" || snap.action === "exit_autumn"
+                  || snap.action === "take_profit" || snap.action === "force_exit";
+
+  let status: OutcomeStatus = "neutral";
+  if (priceChangePct !== null) {
+    if (isEnter)  status = (!stopHit && priceChangePct > 0) ? "correct" : "wrong";
+    else if (isExit) status = priceChangePct < 0 ? "correct" : "wrong";
+  }
+
+  return { snapshot: snap, priceChangePct, stopHit, status };
+}
+
+function generateSuggestions(outcomes: SnapshotOutcome[]): ParamSuggestion[] {
+  const evaluated = outcomes.filter(o => o.status !== "pending" && o.status !== "neutral");
+  const suggestions: ParamSuggestion[] = [];
+
+  const byStageAction = (stage: string, actions: string[]) =>
+    evaluated.filter(o => o.snapshot.stage === stage && actions.includes(o.snapshot.action));
+
+  // Spring enter/add
+  const springEnter = byStageAction("spring", ["enter", "add"]);
+  if (springEnter.length >= 3) {
+    const correct = springEnter.filter(o => o.status === "correct").length;
+    const pct = correct / springEnter.length * 100;
+    if (pct > 70) {
+      suggestions.push({
+        title: "春季系数偏保守",
+        detail: `春季建仓/加仓 ${EVAL_DAYS}日准确率 ${pct.toFixed(0)}%（高于基准），当前系数 0.45，可尝试上调至 0.50–0.55`,
+        sampleCount: springEnter.length,
+        accuracyPct: pct,
+      });
+    } else if (pct < 45) {
+      suggestions.push({
+        title: "春季信号误报偏多",
+        detail: `春季建仓/加仓 ${EVAL_DAYS}日准确率仅 ${pct.toFixed(0)}%，考虑提高置信度阈值（0.65→0.75）或减小春季系数（0.45→0.35）`,
+        sampleCount: springEnter.length,
+        accuracyPct: pct,
+      });
+    }
+  }
+
+  // Winter enter
+  const winterEnter = byStageAction("winter", ["enter", "add"]);
+  if (winterEnter.length >= 3) {
+    const correct = winterEnter.filter(o => o.status === "correct").length;
+    const pct = correct / winterEnter.length * 100;
+    if (pct < 40) {
+      suggestions.push({
+        title: "冬季入场成功率偏低",
+        detail: `冬季建仓 ${EVAL_DAYS}日准确率 ${pct.toFixed(0)}%，建议提高冬季入场的置信度阈值（0.60→0.70）`,
+        sampleCount: winterEnter.length,
+        accuracyPct: pct,
+      });
+    }
+  }
+
+  // Autumn false signals (exit followed by price rise)
+  const autumnExit = byStageAction("autumn", ["exit_autumn", "reduce"]);
+  if (autumnExit.length >= 3) {
+    const falseSig = autumnExit.filter(o => o.status === "wrong").length;
+    const falsePct = falseSig / autumnExit.length * 100;
+    if (falsePct > 50) {
+      suggestions.push({
+        title: "秋季退出信号误判偏多",
+        detail: `${falsePct.toFixed(0)}% 的秋季退出建议在 ${EVAL_DAYS} 日内股价反而上涨，秋季判定可能过于敏感`,
+        sampleCount: autumnExit.length,
+        accuracyPct: 100 - falsePct,
+      });
+    }
+  }
+
+  // Summer holds/adds
+  const summerBuy = byStageAction("summer", ["add", "hold"]);
+  if (summerBuy.length >= 3) {
+    const correct = summerBuy.filter(o => o.status === "correct").length;
+    const pct = correct / summerBuy.length * 100;
+    if (pct > 75) {
+      suggestions.push({
+        title: "夏季系数可适当上调",
+        detail: `夏季持仓/加仓 ${EVAL_DAYS}日准确率 ${pct.toFixed(0)}%，当前系数 0.75，可尝试上调至 0.80`,
+        sampleCount: summerBuy.length,
+        accuracyPct: pct,
+      });
+    }
+  }
+
+  return suggestions;
+}
+
+// ─── Review page ──────────────────────────────────────────
+
+const Review = () => {
+  const { getSnapshots } = usePositionSnapshots();
+  const [snapshots, setSnapshots] = useState<PositionSnapshot[]>([]);
+  const [klineMap, setKlineMap] = useState<Map<string, Candle[]>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [showSuggestions, setShowSuggestions] = useState(true);
+
+  // Load snapshots
+  useEffect(() => {
+    getSnapshots(30).then(data => {
+      setSnapshots(data);
+      setLoading(false);
+      if (data.length > 0 && !selectedDate) {
+        // Default to most recent date
+        const dates = [...new Set(data.map(s => s.snapshotDate))].sort().reverse();
+        setSelectedDate(dates[0]);
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch klines for all unique symbols
+  useEffect(() => {
+    if (snapshots.length === 0) return;
+    const symbols = [...new Set(snapshots.map(s => s.symbol))];
+    fetchKlineData(symbols).then(result => {
+      const map = new Map<string, Candle[]>();
+      for (const [sym, data] of result.entries()) {
+        map.set(sym, data.dailyBars);
+      }
+      setKlineMap(map);
+    });
+  }, [snapshots.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Compute outcomes for all snapshots
+  const outcomes = useMemo<SnapshotOutcome[]>(() => {
+    return snapshots.map(snap => {
+      const klines = klineMap.get(snap.symbol) || [];
+      return computeOutcome(snap, klines);
+    });
+  }, [snapshots, klineMap]);
+
+  // Group by date
+  const dateGroups = useMemo(() => {
+    const map = new Map<string, SnapshotOutcome[]>();
+    for (const o of outcomes) {
+      const d = o.snapshot.snapshotDate;
+      if (!map.has(d)) map.set(d, []);
+      map.get(d)!.push(o);
+    }
+    // Sort dates descending
+    return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [outcomes]);
+
+  // Overall accuracy across all evaluated snapshots
+  const overallAccuracy = useMemo(() => {
+    const evaluated = outcomes.filter(o => o.status === "correct" || o.status === "wrong");
+    if (evaluated.length === 0) return null;
+    const correct = evaluated.filter(o => o.status === "correct").length;
+    return { pct: correct / evaluated.length * 100, total: evaluated.length };
+  }, [outcomes]);
+
+  // Parameter suggestions
+  const suggestions = useMemo(() => generateSuggestions(outcomes), [outcomes]);
+
+  // Selected date outcomes
+  const selectedOutcomes = useMemo(() => {
+    if (!selectedDate) return [];
+    return outcomes.filter(o => o.snapshot.snapshotDate === selectedDate);
+  }, [outcomes, selectedDate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col">
+      {/* Header */}
+      <header className="border-b border-border px-4 md:px-6 py-3 shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 md:gap-6">
+            <span className="text-xl md:text-2xl font-bold tracking-tight">
+              <span className="text-[hsl(var(--spring))]">股</span>
+              <span className="text-destructive">票</span>
+              <span className="text-[hsl(var(--autumn))]">四</span>
+              <span className="text-primary">季</span>
+            </span>
+            <AppNav />
+          </div>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            {overallAccuracy && (
+              <span>
+                综合准确率{" "}
+                <span className={`font-bold ${overallAccuracy.pct >= 60 ? "text-green-500" : overallAccuracy.pct >= 45 ? "text-[hsl(var(--autumn))]" : "text-red-500"}`}>
+                  {overallAccuracy.pct.toFixed(0)}%
+                </span>
+                <span className="text-xs ml-1">({overallAccuracy.total}条)</span>
+              </span>
+            )}
+            {suggestions.length > 0 && (
+              <button
+                onClick={() => setShowSuggestions(!showSuggestions)}
+                className="flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/10 text-amber-600 text-xs font-medium hover:bg-amber-500/20"
+              >
+                <AlertTriangle className="w-3 h-3" />
+                参数建议 {suggestions.length} 条
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Parameter suggestions panel */}
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="border-b border-border bg-amber-500/5 px-4 md:px-6 py-3">
+          <div className="max-w-4xl space-y-2">
+            {suggestions.map((s, i) => (
+              <div key={i} className="flex items-start gap-3 text-sm">
+                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-medium text-amber-700">{s.title}</span>
+                  <span className="text-muted-foreground ml-2">{s.detail}</span>
+                  <span className="text-xs text-muted-foreground/60 ml-2">(样本 {s.sampleCount} 条)</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {snapshots.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm flex-col gap-2">
+          <p>暂无复盘数据</p>
+          <p className="text-xs">打开仓位管理页面后会自动记录今日快照</p>
+        </div>
+      ) : (
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left: date list */}
+          <div className="w-36 md:w-44 shrink-0 border-r border-border overflow-y-auto">
+            {dateGroups.map(([date, items]) => {
+              const evaluated = items.filter(o => o.status === "correct" || o.status === "wrong");
+              const correct = evaluated.filter(o => o.status === "correct").length;
+              const pct = evaluated.length > 0 ? correct / evaluated.length * 100 : null;
+              const isToday = date === new Date().toISOString().slice(0, 10);
+              const isPending = evaluated.length === 0;
+              return (
+                <button
+                  key={date}
+                  onClick={() => setSelectedDate(date)}
+                  className={`w-full px-3 py-3 text-left border-b border-border transition-colors ${
+                    selectedDate === date ? "bg-primary/5 border-l-2 border-l-primary" : "hover:bg-secondary/50"
+                  }`}
+                >
+                  <div className="text-xs font-medium text-foreground">
+                    {date.slice(5)} {isToday && <span className="text-[10px] text-muted-foreground">(今日)</span>}
+                  </div>
+                  <div className="text-[10px] mt-0.5">
+                    {isPending ? (
+                      <span className="text-muted-foreground/60">待验证</span>
+                    ) : (
+                      <span className={pct! >= 60 ? "text-green-500" : pct! >= 45 ? "text-[hsl(var(--autumn))]" : "text-red-500"}>
+                        {pct!.toFixed(0)}% · {items.length}只
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Right: detail for selected date */}
+          <div className="flex-1 overflow-y-auto p-4 md:p-6">
+            {selectedDate && selectedOutcomes.length > 0 ? (
+              <div className="max-w-3xl space-y-4">
+                {/* Date header */}
+                <div className="flex items-center gap-3">
+                  <h2 className="text-base font-semibold">{selectedDate} 的引擎判断</h2>
+                  <span className="text-xs text-muted-foreground">{selectedOutcomes.length} 只持仓</span>
+                  {(() => {
+                    const ev = selectedOutcomes.filter(o => o.status === "correct" || o.status === "wrong");
+                    if (ev.length === 0) return <span className="text-xs text-muted-foreground">待 {EVAL_DAYS} 个交易日后验证</span>;
+                    const c = ev.filter(o => o.status === "correct").length;
+                    const p = c / ev.length * 100;
+                    return (
+                      <span className={`text-sm font-bold ${p >= 60 ? "text-green-500" : p >= 45 ? "text-[hsl(var(--autumn))]" : "text-red-500"}`}>
+                        准确率 {p.toFixed(0)}%
+                      </span>
+                    );
+                  })()}
+                </div>
+
+                {/* Market context */}
+                {selectedOutcomes[0] && (
+                  <div className="rounded-lg bg-secondary/40 px-3 py-2 text-xs text-muted-foreground flex gap-3">
+                    <span>市场制度 <span className="text-foreground font-medium">{selectedOutcomes[0].snapshot.marketRegime}</span></span>
+                    <span>热度 <span className="text-foreground font-medium">{Math.round(selectedOutcomes[0].snapshot.marketTemperature)}°</span></span>
+                  </div>
+                )}
+
+                {/* Table header */}
+                <div className="grid grid-cols-[1fr_80px_72px_72px_56px_56px] gap-2 text-[10px] text-muted-foreground px-1">
+                  <span>股票</span>
+                  <span className="text-right">当时价</span>
+                  <span className="text-right">置信度</span>
+                  <span className="text-right">{EVAL_DAYS}日后%</span>
+                  <span className="text-center">止损</span>
+                  <span className="text-center">结果</span>
+                </div>
+
+                {/* Rows */}
+                {selectedOutcomes.map((o) => (
+                  <SnapshotRow key={o.snapshot.symbol} outcome={o} />
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                选择左侧日期查看详情
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── SnapshotRow ──────────────────────────────────────────
+
+function SnapshotRow({ outcome }: { outcome: SnapshotOutcome }) {
+  const { snapshot: s, priceChangePct, stopHit, status } = outcome;
+  const [expanded, setExpanded] = useState(false);
+
+  const statusIcon = status === "correct" ? (
+    <TrendingUp className="w-4 h-4 text-green-500" />
+  ) : status === "wrong" ? (
+    <TrendingDown className="w-4 h-4 text-red-500" />
+  ) : status === "neutral" ? (
+    <Minus className="w-4 h-4 text-muted-foreground" />
+  ) : (
+    <span className="text-[10px] text-muted-foreground/60">—</span>
+  );
+
+  const rowBg = status === "correct" ? "bg-green-500/5 border-l-2 border-l-green-500"
+    : status === "wrong" ? "bg-red-500/5 border-l-2 border-l-red-500"
+    : "border-l-2 border-l-transparent";
+
+  return (
+    <div className={`rounded-lg border border-border ${rowBg}`}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full grid grid-cols-[1fr_80px_72px_72px_56px_56px] gap-2 items-center px-3 py-2.5 text-left"
+      >
+        {/* Name + action */}
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-medium truncate">{s.name}</span>
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${actionColors[s.action] || "bg-secondary"}`}>
+              {actionLabels[s.action] || s.action}
+            </span>
+            <span className="text-[11px] text-muted-foreground shrink-0">{seasonEmojis[s.stage as keyof typeof seasonEmojis] || ""}</span>
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-0.5">{s.symbol}</div>
+        </div>
+        {/* Current price at snapshot */}
+        <span className="text-xs text-right">¥{s.currentPrice.toFixed(2)}</span>
+        {/* Confidence */}
+        <span className="text-xs text-right text-muted-foreground">{(s.confidence * 100).toFixed(0)}%</span>
+        {/* Price change */}
+        <span className={`text-xs text-right font-medium ${
+          priceChangePct == null ? "text-muted-foreground/50"
+          : priceChangePct > 0 ? "text-green-500" : priceChangePct < 0 ? "text-red-500" : "text-muted-foreground"
+        }`}>
+          {priceChangePct == null ? "—" : `${priceChangePct > 0 ? "+" : ""}${priceChangePct.toFixed(1)}%`}
+        </span>
+        {/* Stop hit */}
+        <span className={`text-[10px] text-center ${stopHit ? "text-red-500 font-medium" : "text-muted-foreground/50"}`}>
+          {stopHit == null ? "—" : stopHit ? "触发" : "安全"}
+        </span>
+        {/* Result */}
+        <span className="flex justify-center">{statusIcon}</span>
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="border-t border-border/50 px-3 py-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px] text-muted-foreground bg-secondary/20">
+          <div>季节 <span className="text-foreground font-medium">{s.stage}</span></div>
+          <div>季节温度 <span className="text-foreground font-medium">{s.seasonScore.toFixed(0)}</span></div>
+          {s.costBasis > 0 && <div>当时盈亏 <span className={`font-medium ${s.pnlPct > 0 ? "text-green-500" : s.pnlPct < 0 ? "text-red-500" : ""}`}>{s.pnlPct > 0 ? "+" : ""}{s.pnlPct.toFixed(1)}%</span></div>}
+          <div>持仓市值 <span className="text-foreground font-medium">¥{(s.currentPositionValue / 10000).toFixed(1)}万</span></div>
+          {s.hardStopPct != null && <div>硬止损 <span className="text-red-500 font-medium">-{s.hardStopPct.toFixed(1)}%</span></div>}
+          {s.trailingStopPct != null && <div>跟踪止盈 <span className="text-[hsl(var(--autumn))] font-medium">-{s.trailingStopPct.toFixed(1)}%</span></div>}
+          <div>优先级 <span className="text-foreground font-medium">{s.actionPriority}</span></div>
+          <div>市场热度 <span className="text-foreground font-medium">{Math.round(s.marketTemperature)}°</span></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default Review;

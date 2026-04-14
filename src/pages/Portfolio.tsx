@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useStockPool } from "@/hooks/useStockPool";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { useStockClassifications } from "@/hooks/useStockClassification";
+import { usePositionSnapshots } from "@/hooks/usePositionSnapshots";
 import {
   computePortfolio,
   computeATR20,
@@ -62,6 +63,7 @@ const Portfolio = () => {
   const [sortBy, setSortBy] = useState<"default" | "value" | "pnl">("default");
   const [sortDesc, setSortDesc] = useState(true);
   const [viewMode, setViewMode] = useState<"list" | "queue">("list");
+  const { saveSnapshot } = usePositionSnapshots();
 
   const positionInputs: PositionInput[] = useMemo(() => {
     return portfolioStocks.map((stock) => {
@@ -189,6 +191,13 @@ const Portfolio = () => {
     const usedPct = config.totalAssets > 0 ? (portfolio.totalPositionValue / config.totalAssets) * 100 : 0;
     return { totalCost, totalPnl, totalPnlPct, usedPct };
   }, [portfolio, config]);
+
+  // Auto-save daily snapshot when portfolio first loads
+  useEffect(() => {
+    if (!portfolio) return;
+    const today = new Date().toISOString().slice(0, 10);
+    saveSnapshot(today, portfolio.positions, portfolio.market);
+  }, [portfolio?.positions.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (portfolioLoading) {
     return (

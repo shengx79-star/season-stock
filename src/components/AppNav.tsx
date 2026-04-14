@@ -2,30 +2,27 @@ import { useLocation, Link } from "react-router-dom";
 
 export function AppNav() {
   const location = useLocation();
-  const isPortfolio = location.pathname === "/portfolio";
+  const path = location.pathname;
+
+  const link = (to: string, label: string) => {
+    const active = path === to || (to === "/" && !path.startsWith("/portfolio") && !path.startsWith("/review"));
+    return (
+      <Link
+        to={to}
+        className={`px-3 py-1.5 rounded-md transition-colors text-sm ${
+          active ? "bg-primary/10 text-primary font-medium" : "text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        {label}
+      </Link>
+    );
+  };
 
   return (
-    <nav className="flex gap-1 text-sm">
-      <Link
-        to="/?view=list"
-        className={`px-3 py-1.5 rounded-md transition-colors ${
-          !isPortfolio
-            ? "bg-primary/10 text-primary font-medium"
-            : "text-muted-foreground hover:text-foreground"
-        }`}
-      >
-        四季分析
-      </Link>
-      <Link
-        to="/portfolio"
-        className={`px-3 py-1.5 rounded-md transition-colors ${
-          isPortfolio
-            ? "bg-primary/10 text-primary font-medium"
-            : "text-muted-foreground hover:text-foreground"
-        }`}
-      >
-        仓位管理
-      </Link>
+    <nav className="flex gap-1">
+      {link("/?view=list", "四季分析")}
+      {link("/portfolio", "仓位管理")}
+      {link("/review", "复盘")}
     </nav>
   );
 }
