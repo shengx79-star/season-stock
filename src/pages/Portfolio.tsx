@@ -728,7 +728,7 @@ function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, 
       </div>
 
       {/* 风险/收益指示条 */}
-      {pos.hardStopPct != null && (
+      {(pos.hardStopPct != null || pos.trailingStopPct != null) && (
         <RiskReturnBar pos={pos} />
       )}
 
@@ -1086,7 +1086,10 @@ function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, 
 // =============================================
 
 function RiskReturnBar({ pos }: { pos: StockPositionResult }) {
-  const stopDist = Math.abs(pos.hardStopPct ?? 8);   // 止损距成本的距离（正数，如 9.7）
+  // 夏季用跟踪止盈（从最高点回撤），其他季节用硬止损（从成本回撤）
+  const isTrailing = pos.hardStopPct == null && pos.trailingStopPct != null;
+  const stopDist = Math.abs(pos.hardStopPct ?? pos.trailingStopPct ?? 8);
+  const stopLabel = isTrailing ? "跟踪止盈" : "硬止损";
   const pnlPct   = pos.pnlPct;                        // 当前盈亏%（相对成本，可正可负）
   const hasCost  = pos.costBasis > 0;
 
@@ -1111,7 +1114,7 @@ function RiskReturnBar({ pos }: { pos: StockPositionResult }) {
     <div className="rounded-lg bg-secondary/50 p-3">
       {/* 顶部标签行 */}
       <div className="flex items-center justify-between text-[10px] mb-1.5">
-        <span className="text-muted-foreground">止损距成本 <span className="text-red-500 font-medium">-{stopDist.toFixed(1)}%</span></span>
+        <span className="text-muted-foreground">{stopLabel} <span className="text-red-500 font-medium">-{stopDist.toFixed(1)}%</span></span>
         {hasCost && (
           <span className={`font-semibold text-xs ${pnlPct > 0 ? "text-green-500" : pnlPct < 0 ? "text-red-500" : "text-muted-foreground"}`}>
             当前 {pnlPct > 0 ? "+" : ""}{pnlPct.toFixed(1)}%
