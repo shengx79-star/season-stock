@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import type { LiquidityLevel, PositionInput } from "@/lib/positionEngine";
 
 export interface PortfolioConfig {
@@ -22,11 +23,13 @@ export interface PositionRecord {
 }
 
 export function usePortfolio() {
+  const { user } = useAuth();
   const [config, setConfig] = useState<PortfolioConfig | null>(null);
   const [positions, setPositions] = useState<PositionRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchConfig = useCallback(async () => {
+    if (!user) return;
     const { data } = await supabase
       .from("portfolio_config")
       .select("*")
@@ -39,9 +42,10 @@ export function usePortfolio() {
         defaultQuotaPct: Number(data.default_quota_pct),
       });
     }
-  }, []);
+  }, [user]);
 
   const fetchPositions = useCallback(async () => {
+    if (!user) return;
     const { data } = await supabase
       .from("positions")
       .select("*")
@@ -60,11 +64,12 @@ export function usePortfolio() {
         liquidityLevel: r.liquidity_level as LiquidityLevel,
       })));
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
+    if (!user) { setLoading(false); return; }
     Promise.all([fetchConfig(), fetchPositions()]).then(() => setLoading(false));
-  }, [fetchConfig, fetchPositions]);
+  }, [fetchConfig, fetchPositions, user]);
 
   const updateConfig = useCallback(async (totalAssets: number, defaultQuotaPct: number) => {
     if (!config) return;
@@ -76,6 +81,7 @@ export function usePortfolio() {
   }, [config]);
 
   const upsertPosition = useCallback(async (pos: Omit<PositionRecord, "id">) => {
+    if (!user) return;
     await supabase.from("positions").upsert({
       symbol: pos.symbol,
       position_value: pos.positionValue,
@@ -86,9 +92,10 @@ export function usePortfolio() {
       industry: pos.industry,
       theme_cluster: pos.themeCluster,
       liquidity_level: pos.liquidityLevel,
-    }, { onConflict: "symbol" });
+      user_id: user.id,
+    }, { onConflict: "user_id,symbol" });
     await fetchPositions();
-  }, [fetchPositions]);
+  }, [fetchPositions, user]);
 
   const removePosition = useCallback(async (symbol: string) => {
     await supabase.from("positions").delete().eq("symbol", symbol);

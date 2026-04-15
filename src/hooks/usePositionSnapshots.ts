@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import type { StockPositionResult, MarketContext } from "@/lib/positionEngine";
 
 export interface PositionSnapshot {
@@ -47,22 +48,22 @@ function rowToSnapshot(r: Record<string, unknown>): PositionSnapshot {
 }
 
 export function usePositionSnapshots() {
-  /** Save today's snapshot (idempotent — skips if today's records already exist) */
+  const { user } = useAuth();
+
   const saveSnapshot = useCallback(async (
     date: string,
     positions: StockPositionResult[],
     market: MarketContext,
   ): Promise<void> => {
-    if (positions.length === 0) return;
+    if (!user || positions.length === 0) return;
 
-    // Check if we already have records for today
     const { data: existing } = await (supabase as any)
       .from("position_snapshots")
       .select("id")
       .eq("snapshot_date", date)
       .limit(1);
 
-    if (existing && existing.length > 0) return; // already saved today
+    if (existing && existing.length > 0) return;
 
     const rows = positions.map((pos) => ({
       snapshot_date:          date,
@@ -82,15 +83,16 @@ export function usePositionSnapshots() {
       trailing_stop_pct:      pos.trailingStopPct,
       market_regime:          market.regime,
       market_temperature:     market.temperature,
+      user_id:                user.id,
     }));
 
     await (supabase as any)
       .from("position_snapshots")
-      .upsert(rows, { onConflict: "snapshot_date,symbol", ignoreDuplicates: true });
-  }, []);
+      .upsert(rows, { onConflict: "user_id,snapshot_date,symbol", ignoreDuplicates: true });
+  }, [user]);
 
-  /** Fetch snapshots for the past N days */
   const getSnapshots = useCallback(async (days = 30): Promise<PositionSnapshot[]> => {
+    if (!user) return [];
     const since = new Date();
     since.setDate(since.getDate() - days);
     const sinceStr = since.toISOString().slice(0, 10);
@@ -104,7 +106,7 @@ export function usePositionSnapshots() {
 
     if (error || !data) return [];
     return (data as Record<string, unknown>[]).map(rowToSnapshot);
-  }, []);
+  }, [user]);
 
   return { saveSnapshot, getSnapshots };
 }
