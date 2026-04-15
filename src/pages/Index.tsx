@@ -247,9 +247,25 @@ const Index = () => {
         </div>
         <main className="px-6 py-6">
           <div className="max-w-5xl mx-auto">
-            <p className="text-sm text-muted-foreground mb-6">
-              找到 {filteredResults.length} 只股票
-            </p>
+            <div className="flex items-center gap-3 mb-6">
+              <p className="text-sm text-muted-foreground">
+                找到 {filteredResults.length} 只股票
+              </p>
+              {refreshing && (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  刷新行情中...
+                </span>
+              )}
+              {!refreshing && (
+                <button
+                  onClick={refreshPrices}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  ↻ 刷新行情
+                </button>
+              )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredResults.map((stock) => (
                 <StockCard
