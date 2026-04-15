@@ -896,6 +896,26 @@ function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, 
                     hint={`所有股票原始目标之和超过市场层上限(${Math.round(portfolioCap * 100)}%)，按比例同步缩小`} />
                 </div>
               )}
+              {pos.concentrationConstraint && (
+                <div className="border-t border-border/50 mt-1.5 pt-1.5 space-y-0.5">
+                  {pos.concentrationConstraint.industryScale < 1.0 && (
+                    <FlowItem
+                      label={`行业约束（${pos.concentrationConstraint.industryGroup}）`}
+                      value={`×${pos.concentrationConstraint.industryScale.toFixed(2)}`}
+                      color="text-[hsl(var(--autumn))]"
+                      hint={`${pos.concentrationConstraint.industryGroup} 板块合计超过总资产25%，按比例压缩`}
+                    />
+                  )}
+                  {pos.concentrationConstraint.themeScale < 1.0 && (
+                    <FlowItem
+                      label={`主题约束（${pos.concentrationConstraint.themeGroup}）`}
+                      value={`×${pos.concentrationConstraint.themeScale.toFixed(2)}`}
+                      color="text-[hsl(var(--autumn))]"
+                      hint={`${pos.concentrationConstraint.themeGroup} 主题合计超过总资产20%，按比例压缩`}
+                    />
+                  )}
+                </div>
+              )}
             </div>
           </LayerStep>
 

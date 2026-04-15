@@ -114,6 +114,15 @@ export interface StockPositionResult {
   riskCappedValue: number;
   liquidityCappedValue: number;
   allowedEntryValue: number;
+  // v3.2: 集中度约束
+  industry: string;
+  themeCluster: string;
+  concentrationConstraint: {
+    industryGroup: string;
+    industryScale: number;
+    themeGroup: string;
+    themeScale: number;
+  } | null;
 }
 
 export interface PortfolioResult {
@@ -734,6 +743,10 @@ export function computePortfolio(
       riskCappedValue,
       liquidityCappedValue: liquidityCappedValue === Infinity ? 0 : liquidityCappedValue,
       allowedEntryValue,
+      // v3.2: 集中度约束（在 Layer 2.95 填充）
+      industry: input.industry,
+      themeCluster: input.themeCluster,
+      concentrationConstraint: null,
     });
   }
 
@@ -754,6 +767,69 @@ export function computePortfolio(
       r.allowedEntryValue = r.positionGap > 0
         ? Math.min(r.positionGap, r.riskCappedValue, liquidityCap)
         : 0;
+    }
+  }
+
+  // ── Layer 2.95: 集中度约束（先行业后主题）──
+  if (totalAssets > 0) {
+    const INDUSTRY_CAP = totalAssets * 0.25;
+    const THEME_CAP    = totalAssets * 0.20;
+
+    function applyConcentrationCap(
+      group: StockPositionResult[],
+      cap: number,
+      type: "industry" | "theme",
+      groupName: string,
+    ) {
+      const total = group.reduce((s, r) => s + r.finalTargetValue, 0);
+      if (total <= cap || total === 0) return;
+      const scale = cap / total;
+      for (const r of group) {
+        r.finalTargetValue      *= scale;
+        r.executableTargetValue *= scale;
+        r.springReleaseCap      *= scale;
+        r.positionGap            = r.executableTargetValue - r.currentPositionValue;
+        const liqCap = r.liquidityCappedValue > 0 ? r.liquidityCappedValue : Infinity;
+        r.allowedEntryValue = r.positionGap > 0
+          ? Math.min(r.positionGap, r.riskCappedValue, liqCap) : 0;
+        r.concentrationConstraint = r.concentrationConstraint ?? {
+          industryGroup: "", industryScale: 1.0,
+          themeGroup: "", themeScale: 1.0,
+        };
+        if (type === "industry") {
+          r.concentrationConstraint.industryGroup = groupName;
+          r.concentrationConstraint.industryScale = scale;
+          r.notes.push(`行业集中度约束：${groupName} 超过25%，压缩×${scale.toFixed(2)}`);
+        } else {
+          r.concentrationConstraint.themeGroup = groupName;
+          r.concentrationConstraint.themeScale = scale;
+          r.notes.push(`主题集中度约束：${groupName} 超过20%，压缩×${scale.toFixed(2)}`);
+        }
+      }
+    }
+
+    // Step A：按行业分组压缩
+    const byIndustry = new Map<string, StockPositionResult[]>();
+    for (const r of rawResults) {
+      if (!r.industry) continue;
+      const g = byIndustry.get(r.industry) ?? [];
+      g.push(r);
+      byIndustry.set(r.industry, g);
+    }
+    for (const [name, group] of byIndustry) {
+      applyConcentrationCap(group, INDUSTRY_CAP, "industry", name);
+    }
+
+    // Step B：按主题分组压缩（空字符串跳过）
+    const byTheme = new Map<string, StockPositionResult[]>();
+    for (const r of rawResults) {
+      if (!r.themeCluster) continue;
+      const g = byTheme.get(r.themeCluster) ?? [];
+      g.push(r);
+      byTheme.set(r.themeCluster, g);
+    }
+    for (const [name, group] of byTheme) {
+      applyConcentrationCap(group, THEME_CAP, "theme", name);
     }
   }
 
