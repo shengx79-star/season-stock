@@ -1,4 +1,5 @@
 import { useLocation, Link } from "react-router-dom";
+import { UserMenu } from "@/components/UserMenu";
 
 export function AppNav() {
   const location = useLocation();
@@ -19,10 +20,13 @@ export function AppNav() {
   };
 
   return (
-    <nav className="flex gap-1">
-      {link("/?view=list", "四季分析")}
-      {link("/portfolio", "仓位管理")}
-      {link("/review", "复盘")}
+    <nav className="flex items-center justify-between w-full">
+      <div className="flex gap-1">
+        {link("/?view=list", "四季分析")}
+        {link("/portfolio", "仓位管理")}
+        {link("/review", "复盘")}
+      </div>
+      <UserMenu />
     </nav>
   );
 }
