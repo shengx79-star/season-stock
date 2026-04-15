@@ -11,6 +11,7 @@ import { Stock, Season, seasonLabels, seasonEmojis } from "@/lib/stockData";
 import { useStockClassifications, useStockClassification } from "@/hooks/useStockClassification";
 import { useStockPool } from "@/hooks/useStockPool";
 import { lookupStock, searchStockByName, StockSuggestion } from "@/lib/stockLookup";
+import { detectMarketFromTag, getMarketColorClass } from "@/lib/marketDetect";
 import { toast } from "sonner";
 
 const seasonFilters: (Season | "all")[] = ["all", "spring", "summer", "autumn", "winter"];
@@ -283,24 +284,29 @@ const Index = () => {
                   <div>
                     <p className="text-muted-foreground mb-4">股票池中未找到，以下是外部搜索结果：</p>
                     <div className="max-w-md mx-auto space-y-2">
-                      {suggestions.map((s) => (
-                        <button
-                          key={s.symbol}
-                          onClick={() => handleAddSuggestion(s)}
-                          disabled={addingSymbol === s.symbol}
-                          className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors disabled:opacity-50"
-                        >
-                          <div className="text-left">
-                            <span className="text-sm font-medium text-foreground">{s.name}</span>
-                            <span className="text-xs text-muted-foreground ml-2">{s.symbol}</span>
-                          </div>
-                          {addingSymbol === s.symbol ? (
-                            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                          ) : (
-                            <Plus className="w-4 h-4 text-muted-foreground" />
-                          )}
-                        </button>
-                      ))}
+                      {suggestions.map((s) => {
+                        const mLabel = detectMarketFromTag(s.market);
+                        const mColor = getMarketColorClass(mLabel);
+                        return (
+                          <button
+                            key={s.symbol}
+                            onClick={() => handleAddSuggestion(s)}
+                            disabled={addingSymbol === s.symbol}
+                            className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors disabled:opacity-50"
+                          >
+                            <div className="text-left flex items-center gap-2">
+                              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${mColor}`}>{mLabel}</span>
+                              <span className="text-sm font-medium text-foreground">{s.name}</span>
+                              <span className="text-xs text-muted-foreground">{s.symbol}</span>
+                            </div>
+                            {addingSymbol === s.symbol ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                            ) : (
+                              <Plus className="w-4 h-4 text-muted-foreground" />
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : (
