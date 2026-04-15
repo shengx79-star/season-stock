@@ -154,25 +154,26 @@ const Index = () => {
   };
 
   const renderSearchHeader = (onLogoClick: () => void) => (
-    <header className="border-b border-border px-6 py-3">
-      <div className="flex items-center gap-4 max-w-5xl mx-auto">
-        <button onClick={onLogoClick} className="text-2xl font-bold tracking-tight shrink-0">
+    <header className="border-b border-border px-3 sm:px-6 py-3">
+      <div className="flex items-center gap-2 sm:gap-4 max-w-5xl mx-auto">
+        <button onClick={onLogoClick} className="text-xl sm:text-2xl font-bold tracking-tight shrink-0">
           <span className="text-[hsl(var(--spring))]">股</span>
           <span className="text-destructive">票</span>
           <span className="text-[hsl(var(--autumn))]">四</span>
           <span className="text-primary">季</span>
         </button>
         <AppNav />
-        <div className="flex-1" />
-        <form onSubmit={handleSearch} className="w-full max-w-md">
+      </div>
+      <div className="max-w-5xl mx-auto mt-2 sm:mt-0 sm:hidden">
+        <form onSubmit={handleSearch}>
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               ref={inputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="search-input pl-11 pr-10 py-2.5 text-sm"
-              placeholder="输入股票代码添加，或搜索名称..."
+              className="search-input pl-11 pr-10 py-2 text-sm"
+              placeholder="股票代码或名称..."
             />
             {query && (
               <button type="button" onClick={handleClear} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
@@ -181,6 +182,27 @@ const Index = () => {
             )}
           </div>
         </form>
+      </div>
+      <div className="hidden sm:block max-w-5xl mx-auto mt-0">
+        <div className="flex justify-end">
+          <form onSubmit={handleSearch} className="w-full max-w-md">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="search-input pl-11 pr-10 py-2.5 text-sm"
+                placeholder="输入股票代码添加，或搜索名称..."
+              />
+              {query && (
+                <button type="button" onClick={handleClear} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
       </div>
     </header>
   );
