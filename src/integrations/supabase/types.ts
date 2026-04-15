@@ -38,6 +38,72 @@ export type Database = {
         }
         Relationships: []
       }
+      position_snapshots: {
+        Row: {
+          action: string
+          action_priority: number
+          confidence: number
+          cost_basis: number
+          created_at: string | null
+          current_position_value: number
+          current_price: number
+          final_target_value: number
+          hard_stop_pct: number | null
+          id: string
+          market_regime: string
+          market_temperature: number
+          name: string
+          pnl_pct: number
+          season_score: number
+          snapshot_date: string
+          stage: string
+          symbol: string
+          trailing_stop_pct: number | null
+        }
+        Insert: {
+          action: string
+          action_priority?: number
+          confidence?: number
+          cost_basis?: number
+          created_at?: string | null
+          current_position_value?: number
+          current_price?: number
+          final_target_value?: number
+          hard_stop_pct?: number | null
+          id?: string
+          market_regime?: string
+          market_temperature?: number
+          name: string
+          pnl_pct?: number
+          season_score?: number
+          snapshot_date: string
+          stage: string
+          symbol: string
+          trailing_stop_pct?: number | null
+        }
+        Update: {
+          action?: string
+          action_priority?: number
+          confidence?: number
+          cost_basis?: number
+          created_at?: string | null
+          current_position_value?: number
+          current_price?: number
+          final_target_value?: number
+          hard_stop_pct?: number | null
+          id?: string
+          market_regime?: string
+          market_temperature?: number
+          name?: string
+          pnl_pct?: number
+          season_score?: number
+          snapshot_date?: string
+          stage?: string
+          symbol?: string
+          trailing_stop_pct?: number | null
+        }
+        Relationships: []
+      }
       positions: {
         Row: {
           cost_basis: number
