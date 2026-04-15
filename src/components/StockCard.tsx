@@ -32,7 +32,7 @@ export const StockCard = ({ stock, classification, dailyBars, liveQuote, onClick
 
   return (
     <div className="stock-card relative group" onClick={() => onClick(stock)}>
-      <div className="absolute top-2 right-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute -top-1 -right-1 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         {onTogglePortfolio && (
           <button
             onClick={(e) => { e.stopPropagation(); onTogglePortfolio(stock.symbol, !inPortfolio); }}
