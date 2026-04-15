@@ -163,7 +163,8 @@ const Index = () => {
           <span className="text-primary">季</span>
         </button>
         <AppNav />
-        <form onSubmit={handleSearch} className="flex-1 max-w-xl">
+        <div className="flex-1" />
+        <form onSubmit={handleSearch} className="w-full max-w-md">
           <div className="relative">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
