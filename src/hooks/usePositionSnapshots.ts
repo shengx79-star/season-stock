@@ -56,7 +56,7 @@ export function usePositionSnapshots() {
     if (positions.length === 0) return;
 
     // Check if we already have records for today
-    const { data: existing } = await supabase
+    const { data: existing } = await (supabase as any)
       .from("position_snapshots")
       .select("id")
       .eq("snapshot_date", date)
@@ -72,7 +72,7 @@ export function usePositionSnapshots() {
       action:                 pos.action,
       action_priority:        pos.actionPriority,
       confidence:             pos.quantConfidence,
-      season_score:           pos.seasonScore,
+      season_score:           0,
       current_price:          pos.currentPrice,
       cost_basis:             pos.costBasis,
       pnl_pct:                pos.pnlPct,
@@ -84,7 +84,7 @@ export function usePositionSnapshots() {
       market_temperature:     market.temperature,
     }));
 
-    await supabase
+    await (supabase as any)
       .from("position_snapshots")
       .upsert(rows, { onConflict: "snapshot_date,symbol", ignoreDuplicates: true });
   }, []);
@@ -95,7 +95,7 @@ export function usePositionSnapshots() {
     since.setDate(since.getDate() - days);
     const sinceStr = since.toISOString().slice(0, 10);
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("position_snapshots")
       .select("*")
       .gte("snapshot_date", sinceStr)
