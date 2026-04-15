@@ -345,7 +345,15 @@ const Index = () => {
               </button>
             )}
           </div>
-          <div className="flex justify-center gap-3 mt-6">
+          <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 mt-3 text-xs text-muted-foreground">
+            <span><span className="text-red-400">沪</span> 600xxx</span>
+            <span><span className="text-blue-400">深</span> 000/300xxx</span>
+            <span><span className="text-orange-400">港</span> 0xxxx</span>
+            <span><span className="text-emerald-400">美</span> AAPL</span>
+            <span><span className="text-purple-400">日</span> 7203</span>
+            <span><span className="text-cyan-400">韩</span> 搜名称</span>
+          </div>
+          <div className="flex justify-center gap-3 mt-4">
             {codeNotInPool ? (
               <button
                 type="submit"
