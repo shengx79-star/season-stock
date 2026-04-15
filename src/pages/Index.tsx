@@ -35,7 +35,7 @@ const Index = () => {
   const [addingSymbol, setAddingSymbol] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { stocks: stockPool, addStock, removeStock, togglePortfolio } = useStockPool();
+  const { stocks: stockPool, addStock, removeStock, togglePortfolio, refreshing, refreshPrices } = useStockPool();
 
   const handleDeleteStock = async (symbol: string) => {
     const ok = await removeStock(symbol);
