@@ -5,6 +5,7 @@ import { SeasonScoreBar } from "./SeasonScoreBar";
 import { MiniKlineChart } from "./MiniKlineChart";
 import { TrendingUp, TrendingDown, X, Briefcase } from "lucide-react";
 import { Season } from "@/lib/stockData";
+import { detectMarketLabel, getMarketColorClass } from "@/lib/marketDetect";
 
 interface StockCardProps {
   stock: Stock;
@@ -22,6 +23,8 @@ export const StockCard = ({ stock, classification, dailyBars, onClick, onDelete,
   const confidenceLevel = classification?.confidenceLevel;
   const seasonScore = classification?.seasonScore ?? 50;
   const inPortfolio = !!stock.inPortfolio;
+  const marketLabel = detectMarketLabel(stock.symbol);
+  const marketColor = getMarketColorClass(marketLabel);
 
   return (
     <div className="stock-card relative group" onClick={() => onClick(stock)}>
@@ -53,7 +56,10 @@ export const StockCard = ({ stock, classification, dailyBars, onClick, onDelete,
       )}
       <div className="flex items-start justify-between mb-3">
         <div>
-          <h3 className="text-lg font-medium text-foreground">{stock.symbol}</h3>
+          <h3 className="text-lg font-medium text-foreground flex items-center gap-1.5">
+            {stock.symbol}
+            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${marketColor}`}>{marketLabel}</span>
+          </h3>
           <p className="text-sm text-muted-foreground">{stock.name}</p>
         </div>
         <SeasonBadge
