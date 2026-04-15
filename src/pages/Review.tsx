@@ -172,16 +172,16 @@ const Review = () => {
 
   // Load snapshots
   useEffect(() => {
+    setLoading(true);
     getSnapshots(30).then(data => {
       setSnapshots(data);
       setLoading(false);
       if (data.length > 0 && !selectedDate) {
-        // Default to most recent date
         const dates = [...new Set(data.map(s => s.snapshotDate))].sort().reverse();
         setSelectedDate(dates[0]);
       }
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [getSnapshots]); // re-run when user changes
 
   // Fetch klines for all unique symbols
   useEffect(() => {
