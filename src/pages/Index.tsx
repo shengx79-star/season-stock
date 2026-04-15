@@ -182,6 +182,9 @@ const Index = () => {
               </button>
             )}
           </div>
+          <p className="text-[10px] text-muted-foreground mt-1.5 px-1">
+            A股代码 · 港股5位代码 · 美股英文代码 · 日股4位代码 · 韩股需搜索名称
+          </p>
         </form>
       </div>
       <div className="hidden sm:block max-w-5xl mx-auto mt-0">
@@ -333,7 +336,7 @@ const Index = () => {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="search-input pl-14 pr-12"
-              placeholder="输入股票代码添加，或搜索名称..."
+              placeholder="代码或名称：600519 / AAPL / samsung..."
               autoFocus
             />
             {query && (
@@ -342,7 +345,15 @@ const Index = () => {
               </button>
             )}
           </div>
-          <div className="flex justify-center gap-3 mt-6">
+          <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 mt-3 text-xs text-muted-foreground">
+            <span><span className="text-red-400">沪</span> 600xxx</span>
+            <span><span className="text-blue-400">深</span> 000/300xxx</span>
+            <span><span className="text-orange-400">港</span> 0xxxx</span>
+            <span><span className="text-emerald-400">美</span> AAPL</span>
+            <span><span className="text-purple-400">日</span> 7203</span>
+            <span><span className="text-cyan-400">韩</span> 搜名称</span>
+          </div>
+          <div className="flex justify-center gap-3 mt-4">
             {codeNotInPool ? (
               <button
                 type="submit"
