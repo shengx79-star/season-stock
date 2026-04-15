@@ -7,6 +7,10 @@ function isUSStock(symbol: string): boolean {
   return /^[A-Za-z]{1,5}$/.test(symbol);
 }
 
+function isJPStock(symbol: string): boolean {
+  return /^[0-9]{4}$/.test(symbol);
+}
+
 // ─── Tencent Finance (A-share & HK) ───
 
 function toTencentCode(symbol: string): string {
