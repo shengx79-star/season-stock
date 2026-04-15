@@ -122,27 +122,16 @@ async function searchUSStocks(keyword: string) {
 
 // ─── Tencent Finance (A-share & HK) ───
 
-async function fetchQuote(symbol: string) {
-  const code = toTencentCode(symbol);
-  const url = `https://qt.gtimg.cn/q=${code}`;
-  const resp = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      'Referer': 'https://finance.qq.com/',
-    },
-  });
-  const buf = await resp.arrayBuffer();
-  const text = new TextDecoder('gbk').decode(buf);
-  const match = text.match(/"([^"]*)"/);
-  if (!match || !match[1] || match[1].length < 10) return null;
-
-  const fields = match[1].split('~');
+function parseTencentFields(symbol: string, fields: string[]) {
   const name = fields[1] || '';
   const price = parseFloat(fields[3]) || 0;
   const prevClose = parseFloat(fields[4]) || 0;
+  const open = parseFloat(fields[5]) || 0;
   const change = price - prevClose;
   const changePercent = prevClose > 0 ? ((change / prevClose) * 100) : 0;
   const volume = parseFloat(fields[6]) || 0;
+  const high = parseFloat(fields[33]) || 0;
+  const low = parseFloat(fields[34]) || 0;
   const totalValue = parseFloat(fields[45]) || 0;
   const pe = parseFloat(fields[39]) || 0;
 
@@ -160,9 +149,106 @@ async function fetchQuote(symbol: string) {
     symbol, name, price: Math.round(price * 100) / 100,
     change: Math.round(change * 100) / 100,
     changePercent: Math.round(changePercent * 100) / 100,
+    open: Math.round(open * 100) / 100,
+    high: Math.round(high * 100) / 100,
+    low: Math.round(low * 100) / 100,
+    prevClose: Math.round(prevClose * 100) / 100,
     volume: volumeStr, marketCap: marketCapStr,
     pe: Math.round(pe * 10) / 10, sector: '', market,
   };
+}
+
+async function fetchQuote(symbol: string) {
+  const code = toTencentCode(symbol);
+  const url = `https://qt.gtimg.cn/q=${code}`;
+  const resp = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Referer': 'https://finance.qq.com/',
+    },
+  });
+  const buf = await resp.arrayBuffer();
+  const text = new TextDecoder('gbk').decode(buf);
+  const match = text.match(/"([^"]*)"/);
+  if (!match || !match[1] || match[1].length < 10) return null;
+  return parseTencentFields(symbol, match[1].split('~'));
+}
+
+// Batch quote: A-share/HK via Tencent, US/JP/KR via Yahoo
+async function fetchBatchQuotes(symbols: string[]) {
+  const cnSymbols = symbols.filter(s => !isUSStock(s) && !isJPStock(s) && !isKRStock(s));
+  const yahooSymbols = symbols.filter(s => isUSStock(s) || isJPStock(s) || isKRStock(s));
+
+  const results: any[] = [];
+
+  // Tencent batch (A-share + HK)
+  if (cnSymbols.length > 0) {
+    const codes = cnSymbols.map(toTencentCode).join(',');
+    const url = `https://qt.gtimg.cn/q=${codes}`;
+    try {
+      const resp = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://finance.qq.com/',
+        },
+      });
+      const buf = await resp.arrayBuffer();
+      const text = new TextDecoder('gbk').decode(buf);
+      // Each line: v_sh600519="1~贵州茅台~600519~1500.00~..."
+      const lines = text.split('\n').filter(l => l.includes('="'));
+      for (let i = 0; i < lines.length; i++) {
+        const m = lines[i].match(/"([^"]*)"/);
+        if (!m || !m[1] || m[1].length < 10) continue;
+        const symbol = cnSymbols[i];
+        if (!symbol) continue;
+        results.push(parseTencentFields(symbol, m[1].split('~')));
+      }
+    } catch (_) { /* skip on error */ }
+  }
+
+  // Yahoo batch (US/JP/KR)
+  if (yahooSymbols.length > 0) {
+    const yahooList = yahooSymbols.map(s => {
+      if (isJPStock(s)) return `${s}.T`;
+      return s.toUpperCase();
+    });
+    const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(yahooList.join(','))}`;
+    try {
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+      });
+      if (resp.ok) {
+        const json = await resp.json();
+        const quotes = json?.quoteResponse?.result ?? [];
+        for (const q of quotes) {
+          const price = q.regularMarketPrice ?? 0;
+          const prevClose = q.regularMarketPreviousClose ?? q.chartPreviousClose ?? 0;
+          const change = price - prevClose;
+          // find original symbol
+          const rawSym = q.symbol?.replace(/\.T$/, '') ?? '';
+          const origSym = yahooSymbols.find(s => s.toUpperCase() === rawSym.toUpperCase() || `${s}.T` === q.symbol) ?? rawSym;
+          const market = detectMarket(origSym);
+          const vol = q.regularMarketVolume ?? 0;
+          results.push({
+            symbol: origSym,
+            name: q.shortName || q.longName || origSym,
+            price: Math.round(price * 100) / 100,
+            change: Math.round(change * 100) / 100,
+            changePercent: Math.round((prevClose > 0 ? change / prevClose * 100 : 0) * 100) / 100,
+            open: Math.round((q.regularMarketOpen ?? 0) * 100) / 100,
+            high: Math.round((q.regularMarketDayHigh ?? 0) * 100) / 100,
+            low: Math.round((q.regularMarketDayLow ?? 0) * 100) / 100,
+            prevClose: Math.round(prevClose * 100) / 100,
+            volume: vol >= 1_000_000 ? `${(vol / 1_000_000).toFixed(1)}M` : vol >= 1000 ? `${(vol / 1000).toFixed(1)}K` : `${vol}`,
+            marketCap: '',
+            pe: 0, sector: '', market,
+          });
+        }
+      }
+    } catch (_) { /* skip on error */ }
+  }
+
+  return results;
 }
 
 async function searchByName(keyword: string) {
@@ -198,7 +284,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { symbol, keyword, action, symbols } = body;
+    const { symbol, symbols, keyword, action } = body;
 
     if (action === 'search' && keyword) {
       const suggestions = await searchByName(keyword);
@@ -207,20 +293,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Batch quote: fetch multiple symbols at once
-    if (action === 'batch-quote' && Array.isArray(symbols) && symbols.length > 0) {
-      const results: Record<string, any> = {};
-      for (const sym of symbols.slice(0, 50)) {
-        try {
-          const market = detectMarket(sym);
-          const info = (market === 'US' || market === 'JP' || market === 'KR')
-            ? await fetchYahooQuote(sym, market)
-            : await fetchQuote(sym);
-          if (info) results[sym] = info;
-        } catch (e) {
-          console.error(`batch-quote error for ${sym}:`, e);
-        }
-      }
+    // Batch quote mode (single Tencent batch call + Yahoo batch)
+    if (Array.isArray(symbols) && symbols.length > 0) {
+      const results = await fetchBatchQuotes(symbols);
       return new Response(JSON.stringify({ results }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

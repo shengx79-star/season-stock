@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { matchesPinyin } from "@/lib/pinyinMatch";
 import { Search, X, Plus, Loader2 } from "lucide-react";
@@ -12,6 +12,7 @@ import { useStockClassifications, useStockClassification } from "@/hooks/useStoc
 import { useStockPool } from "@/hooks/useStockPool";
 import { lookupStock, searchStockByName, StockSuggestion } from "@/lib/stockLookup";
 import { detectMarketFromTag, getMarketColorClass } from "@/lib/marketDetect";
+import { useRealtimePrices } from "@/hooks/useRealtimePrices";
 import { toast } from "sonner";
 
 const seasonFilters: (Season | "all")[] = ["all", "spring", "summer", "autumn", "winter"];
@@ -63,6 +64,9 @@ const Index = () => {
   })();
 
   const { results: classifications, dailyBarsMap } = useStockClassifications(searchResults);
+
+  const poolSymbols = useMemo(() => stockPool.map(s => s.symbol), [stockPool]);
+  const { quotes: liveQuotes } = useRealtimePrices(poolSymbols);
 
   const filteredResults = activeFilter === "all"
     ? searchResults
@@ -273,6 +277,7 @@ const Index = () => {
                   stock={stock}
                   classification={classifications.get(stock.symbol)}
                   dailyBars={dailyBarsMap.get(stock.symbol)}
+                  liveQuote={liveQuotes.get(stock.symbol)}
                   onClick={handleStockClick}
                   onDelete={handleDeleteStock}
                   onTogglePortfolio={handleTogglePortfolio}

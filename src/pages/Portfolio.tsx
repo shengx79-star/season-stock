@@ -3,6 +3,8 @@ import { useStockPool } from "@/hooks/useStockPool";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { useStockClassifications } from "@/hooks/useStockClassification";
 import { usePositionSnapshots } from "@/hooks/usePositionSnapshots";
+import { useRealtimePrices } from "@/hooks/useRealtimePrices";
+import { formatBJTime } from "@/lib/marketHours";
 import {
   computePortfolio,
   computeATR20,
@@ -16,7 +18,7 @@ import {
 } from "@/lib/positionEngine";
 import { seasonLabels, seasonEmojis, type Season } from "@/lib/stockData";
 import { AppNav } from "@/components/AppNav";
-import { Settings, TrendingUp, Trash2, Loader2, DollarSign, Briefcase, ChevronLeft, ChevronDown, ChevronRight } from "lucide-react";
+import { Settings, TrendingUp, Trash2, Loader2, DollarSign, Briefcase, ChevronLeft, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 const actionLabels: Record<ActionType, string> = {
@@ -64,6 +66,10 @@ const Portfolio = () => {
   const [sortDesc, setSortDesc] = useState(true);
   const [viewMode, setViewMode] = useState<"list" | "queue">("list");
   const { saveSnapshot } = usePositionSnapshots();
+
+  // 实时行情
+  const portfolioSymbols = useMemo(() => portfolioStocks.map(s => s.symbol), [portfolioStocks]);
+  const { quotes: liveQuotes, lastUpdated: liveUpdatedAt, isMarketOpen, refresh: refreshLive } = useRealtimePrices(portfolioSymbols);
 
   const positionInputs: PositionInput[] = useMemo(() => {
     return portfolioStocks.map((stock) => {
@@ -276,7 +282,21 @@ const Portfolio = () => {
                 <span className="text-xs font-medium flex items-center gap-1">
                   <TrendingUp className="w-3 h-3" /> {regimeLabels[portfolio.market.regime]}
                 </span>
-                <span className={`text-sm font-bold flex items-center gap-1 ${
+                <div className="flex items-center gap-2">
+                  {/* 实时行情状态 */}
+                  <div className="flex items-center gap-1">
+                    <span className={`flex items-center gap-1 text-[10px] font-medium ${isMarketOpen ? "text-green-500" : "text-muted-foreground"}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${isMarketOpen ? "bg-green-500 animate-pulse" : "bg-muted-foreground"}`} />
+                      {isMarketOpen ? "盘中" : "已收盘"}
+                    </span>
+                    {liveUpdatedAt && (
+                      <span className="text-[10px] text-muted-foreground/60">{formatBJTime(liveUpdatedAt)}</span>
+                    )}
+                    <button onClick={refreshLive} className="p-0.5 hover:text-foreground text-muted-foreground/60 transition-colors" title="手动刷新">
+                      <RefreshCw className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <span className={`text-sm font-bold flex items-center gap-1 ${
                   portfolio.market.temperature > 60 ? "text-[hsl(var(--summer))]"
                   : portfolio.market.temperature > 40 ? "text-[hsl(var(--autumn))]"
                   : portfolio.market.temperature > 20 ? "text-[hsl(var(--spring))]"
@@ -285,6 +305,7 @@ const Portfolio = () => {
                   <span className="text-xs font-normal text-muted-foreground">市场热度</span>
                   {Math.round(portfolio.market.temperature)}°
                 </span>
+                </div>
               </div>
               <div className="flex gap-1 text-[10px] flex-wrap mb-2">
                 <span className="px-1.5 py-0.5 rounded bg-secondary">上限 {Math.round(portfolio.market.portfolioCap * 100)}%</span>
@@ -477,17 +498,32 @@ const Portfolio = () => {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5 text-[11px]">
-                        <span className="text-muted-foreground">现价 ¥{pos.currentPrice.toFixed(2)}</span>
-                        {pos.currentPositionValue > 0 && (
-                          <span className="text-muted-foreground">持仓 {formatMoney(pos.currentPositionValue)}</span>
-                        )}
-                        {pos.costBasis > 0 && (
-                          <span className={`font-medium ${pos.pnlPct > 0 ? "text-green-500" : pos.pnlPct < 0 ? "text-red-500" : "text-muted-foreground"}`}>
-                            {pos.pnlPct > 0 ? "+" : ""}{pos.pnlPct.toFixed(1)}%
-                          </span>
-                        )}
-                      </div>
+                      {(() => {
+                        const liveQ = liveQuotes.get(pos.symbol);
+                        const livePrice = liveQ?.price ?? pos.currentPrice;
+                        const livePnlPct = pos.costBasis > 0 ? (livePrice - pos.costBasis) / pos.costBasis * 100 : pos.pnlPct;
+                        const priceChanged = liveQ && Math.abs(livePrice - pos.currentPrice) > 0.001;
+                        return (
+                          <div className="flex items-center gap-2 mt-0.5 text-[11px]">
+                            <span className={`${priceChanged ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                              ¥{livePrice.toFixed(2)}
+                              {liveQ && liveQ.changePercent !== 0 && (
+                                <span className={`ml-1 ${liveQ.changePercent > 0 ? "text-green-500" : "text-red-500"}`}>
+                                  {liveQ.changePercent > 0 ? "+" : ""}{liveQ.changePercent.toFixed(2)}%
+                                </span>
+                              )}
+                            </span>
+                            {pos.currentPositionValue > 0 && (
+                              <span className="text-muted-foreground">持仓 {formatMoney(pos.currentPositionValue)}</span>
+                            )}
+                            {pos.costBasis > 0 && (
+                              <span className={`font-medium ${livePnlPct > 0 ? "text-green-500" : livePnlPct < 0 ? "text-red-500" : "text-muted-foreground"}`}>
+                                {livePnlPct > 0 ? "+" : ""}{livePnlPct.toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="text-right shrink-0 ml-2">
                       <div className={`text-xs font-medium ${
