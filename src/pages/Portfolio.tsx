@@ -1137,26 +1137,29 @@ function RiskReturnBar({ pos }: { pos: StockPositionResult }) {
       </div>
 
       {/* 进度条 */}
-      <div className="relative h-3 rounded-full bg-secondary overflow-hidden flex">
-        {/* 红区：止损 → 成本 */}
-        <div className="bg-red-500/25 h-full" style={{ width: `${redWidthPct}%` }} />
-        {/* 绿区：成本 → 当前（仅盈利时显示） */}
-        {greenWidthPct > 0 && (
-          <div className="bg-green-500/30 h-full" style={{ width: `${greenWidthPct}%` }} />
-        )}
-        {/* 余下空白区 */}
-        <div className="flex-1 h-full" />
+      <div className="relative h-3">
+        {/* 色带层（overflow-hidden 裁剪圆角） */}
+        <div className="absolute inset-0 rounded-full bg-secondary overflow-hidden flex">
+          {/* 红区：止损 → 成本 */}
+          <div className="bg-red-500/25 h-full" style={{ width: `${redWidthPct}%` }} />
+          {/* 绿区：成本 → 当前（仅盈利时显示） */}
+          {greenWidthPct > 0 && (
+            <div className="bg-green-500/30 h-full" style={{ width: `${greenWidthPct}%` }} />
+          )}
+          {/* 余下空白区 */}
+          <div className="flex-1 h-full" />
+        </div>
 
-        {/* 成本线（红绿分界） */}
-        <div className="absolute top-0 bottom-0 w-px bg-border" style={{ left: `${redWidthPct}%` }} />
+        {/* 成本线（红绿分界，在色带层上方） */}
+        <div className="absolute top-0 bottom-0 w-px bg-border z-10" style={{ left: `${redWidthPct}%` }} />
 
-        {/* 当前价圆点 */}
+        {/* 当前价圆点（在色带层外，不被 overflow-hidden 截断） */}
         {hasCost && (
           <div
-            className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-background shadow-sm ${
+            className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-background shadow-md z-20 ${
               pnlPct > 0 ? "bg-green-500" : pnlPct < 0 ? "bg-red-500" : "bg-muted-foreground"
             }`}
-            style={{ left: `calc(${dotPos}% - 6px)` }}
+            style={{ left: `calc(${dotPos}% - 8px)` }}
           />
         )}
       </div>
