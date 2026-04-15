@@ -112,7 +112,8 @@ async function fetchYahooKline(symbol: string, period: string, num: number, isJP
   }
 
   const interval = period === 'week' ? '1wk' : '1d';
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol.toUpperCase())}?interval=${interval}&range=${range}`;
+  const yahooSymbol = isJP ? `${symbol}.T` : symbol.toUpperCase();
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${interval}&range=${range}`;
 
   const resp = await fetch(url, {
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
@@ -161,7 +162,10 @@ async function fetchYahooKline(symbol: string, period: string, num: number, isJP
 
 async function fetchKlineForSymbol(symbol: string, period: string, num: number): Promise<KlineItem[]> {
   if (isUSStock(symbol)) {
-    return fetchYahooKline(symbol, period, num);
+    return fetchYahooKline(symbol, period, num, false);
+  }
+  if (isJPStock(symbol)) {
+    return fetchYahooKline(symbol, period, num, true);
   }
   return fetchTencentKline(symbol, period, num);
 }
