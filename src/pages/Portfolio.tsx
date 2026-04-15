@@ -504,21 +504,25 @@ const Portfolio = () => {
                   </div>
                   {/* 迷你仓位进度条：当前持仓 vs 目标 */}
                   {pos.effectiveQuota > 0 && (
-                    <div className="mt-1.5 relative h-1 rounded-full bg-secondary overflow-hidden">
-                      <div
-                        className={`absolute h-full rounded-full transition-all ${
-                          pos.currentPositionValue < pos.finalTargetValue * 0.95
-                            ? "bg-[hsl(var(--spring))]"
-                            : pos.currentPositionValue > pos.finalTargetValue * 1.05
-                            ? "bg-[hsl(var(--summer))]"
-                            : "bg-muted-foreground"
-                        }`}
-                        style={{ width: `${Math.min((pos.currentPositionValue / pos.effectiveQuota) * 100, 100)}%` }}
-                      />
+                    <div className="mt-1.5 relative h-2">
+                      {/* 色带（overflow-hidden 保证圆角） */}
+                      <div className="absolute inset-0 rounded-full bg-secondary overflow-hidden">
+                        <div
+                          className={`absolute h-full rounded-full transition-all ${
+                            pos.currentPositionValue < pos.finalTargetValue * 0.95
+                              ? "bg-[hsl(var(--spring))]"
+                              : pos.currentPositionValue > pos.finalTargetValue * 1.05
+                              ? "bg-[hsl(var(--summer))]"
+                              : "bg-muted-foreground"
+                          }`}
+                          style={{ width: `${Math.min((pos.currentPositionValue / pos.effectiveQuota) * 100, 100)}%` }}
+                        />
+                      </div>
+                      {/* 目标位标记：小圆点，不被 overflow-hidden 截断 */}
                       {pos.finalTargetValue > 0 && (
                         <div
-                          className="absolute top-0 bottom-0 w-0.5 bg-primary/60"
-                          style={{ left: `${Math.min((pos.finalTargetValue / pos.effectiveQuota) * 100, 100)}%` }}
+                          className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-primary border-2 border-background shadow-sm z-10"
+                          style={{ left: `calc(${Math.min((pos.finalTargetValue / pos.effectiveQuota) * 100, 98)}% - 5px)` }}
                         />
                       )}
                     </div>
