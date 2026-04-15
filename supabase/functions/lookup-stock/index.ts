@@ -7,6 +7,11 @@ function isUSStock(symbol: string): boolean {
   return /^[A-Za-z]{1,5}$/.test(symbol);
 }
 
+function isJPStock(symbol: string): boolean {
+  // 4-digit number → Japanese stock (Nikkei)
+  return /^[0-9]{4}$/.test(symbol);
+}
+
 function toTencentCode(symbol: string): string {
   if (/^0[0-9]{4}$/.test(symbol)) return `hk${symbol}`;
   if (symbol.startsWith('6')) return `sh${symbol}`;
@@ -15,15 +20,17 @@ function toTencentCode(symbol: string): string {
 
 function detectMarket(symbol: string): string {
   if (isUSStock(symbol)) return 'US';
+  if (isJPStock(symbol)) return 'JP';
   if (/^0[0-9]{4}$/.test(symbol)) return 'HK';
   if (symbol.startsWith('6')) return 'SH';
   return 'SZ';
 }
 
-// ─── Yahoo Finance (US stocks) ───
+// ─── Yahoo Finance (US & JP stocks) ───
 
-async function fetchUSQuote(symbol: string) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol.toUpperCase())}?interval=1d&range=1d`;
+async function fetchYahooQuote(symbol: string, market: string) {
+  const yahooSymbol = market === 'JP' ? `${symbol}.T` : symbol.toUpperCase();
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1d`;
   const resp = await fetch(url, {
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
   });
@@ -40,29 +47,32 @@ async function fetchUSQuote(symbol: string) {
 
   const volume = meta.regularMarketVolume ?? 0;
   let volumeStr: string;
-  if (volume >= 1_000_000) {
-    volumeStr = `${(volume / 1_000_000).toFixed(1)}M`;
-  } else if (volume >= 1000) {
-    volumeStr = `${(volume / 1000).toFixed(1)}K`;
+  if (market === 'JP') {
+    if (volume >= 100_000_000) volumeStr = `${(volume / 100_000_000).toFixed(1)}億`;
+    else if (volume >= 10_000) volumeStr = `${(volume / 10_000).toFixed(1)}万`;
+    else volumeStr = `${volume}`;
   } else {
-    volumeStr = `${volume}`;
+    if (volume >= 1_000_000) volumeStr = `${(volume / 1_000_000).toFixed(1)}M`;
+    else if (volume >= 1000) volumeStr = `${(volume / 1000).toFixed(1)}K`;
+    else volumeStr = `${volume}`;
   }
 
   const marketCap = meta.marketCap ?? 0;
   let marketCapStr: string;
-  if (marketCap >= 1e12) {
-    marketCapStr = `${(marketCap / 1e12).toFixed(1)}T`;
-  } else if (marketCap >= 1e9) {
-    marketCapStr = `${(marketCap / 1e9).toFixed(1)}B`;
-  } else if (marketCap >= 1e6) {
-    marketCapStr = `${(marketCap / 1e6).toFixed(0)}M`;
+  if (market === 'JP') {
+    if (marketCap >= 1e12) marketCapStr = `${(marketCap / 1e12).toFixed(1)}兆`;
+    else if (marketCap >= 1e8) marketCapStr = `${(marketCap / 1e8).toFixed(0)}億`;
+    else marketCapStr = `${marketCap}`;
   } else {
-    marketCapStr = `${marketCap}`;
+    if (marketCap >= 1e12) marketCapStr = `${(marketCap / 1e12).toFixed(1)}T`;
+    else if (marketCap >= 1e9) marketCapStr = `${(marketCap / 1e9).toFixed(1)}B`;
+    else if (marketCap >= 1e6) marketCapStr = `${(marketCap / 1e6).toFixed(0)}M`;
+    else marketCapStr = `${marketCap}`;
   }
 
   return {
-    symbol: symbol.toUpperCase(),
-    name: meta.shortName || meta.longName || symbol.toUpperCase(),
+    symbol,
+    name: meta.shortName || meta.longName || symbol,
     price: Math.round(price * 100) / 100,
     change: Math.round(change * 100) / 100,
     changePercent: Math.round(changePercent * 100) / 100,
@@ -70,7 +80,7 @@ async function fetchUSQuote(symbol: string) {
     marketCap: marketCapStr,
     pe: 0,
     sector: '',
-    market: 'US',
+    market,
   };
 }
 
@@ -83,13 +93,21 @@ async function searchUSStocks(keyword: string) {
   const json = await resp.json();
   const quotes = json?.quotes || [];
   return quotes
-    .filter((q: any) => q.quoteType === 'EQUITY' && q.exchange && !q.symbol.includes('.'))
-    .slice(0, 8)
-    .map((q: any) => ({
-      market: 'us',
-      symbol: q.symbol,
-      name: q.shortname || q.longname || q.symbol,
-    }));
+    .filter((q: any) => q.quoteType === 'EQUITY')
+    .slice(0, 12)
+    .map((q: any) => {
+      const sym = q.symbol || '';
+      let market = 'us';
+      let cleanSymbol = sym;
+      if (sym.endsWith('.T')) {
+        market = 'jp';
+        cleanSymbol = sym.replace('.T', '');
+      } else if (sym.includes('.')) {
+        return null; // skip other exchanges
+      }
+      return { market, symbol: cleanSymbol, name: q.shortname || q.longname || sym };
+    })
+    .filter(Boolean);
 }
 
 // ─── Tencent Finance (A-share & HK) ───
@@ -119,42 +137,30 @@ async function fetchQuote(symbol: string) {
   const pe = parseFloat(fields[39]) || 0;
 
   let volumeStr: string;
-  if (volume >= 10000) {
-    volumeStr = `${(volume / 10000).toFixed(1)}万手`;
-  } else {
-    volumeStr = `${volume.toFixed(0)}手`;
-  }
+  if (volume >= 10000) volumeStr = `${(volume / 10000).toFixed(1)}万手`;
+  else volumeStr = `${volume.toFixed(0)}手`;
 
   let marketCapStr: string;
-  if (totalValue >= 10000) {
-    marketCapStr = `${(totalValue / 10000).toFixed(0)}亿`;
-  } else {
-    marketCapStr = `${totalValue.toFixed(0)}万`;
-  }
+  if (totalValue >= 10000) marketCapStr = `${(totalValue / 10000).toFixed(0)}亿`;
+  else marketCapStr = `${totalValue.toFixed(0)}万`;
 
   const market = detectMarket(symbol);
 
   return {
-    symbol,
-    name,
-    price: Math.round(price * 100) / 100,
+    symbol, name, price: Math.round(price * 100) / 100,
     change: Math.round(change * 100) / 100,
     changePercent: Math.round(changePercent * 100) / 100,
-    volume: volumeStr,
-    marketCap: marketCapStr,
-    pe: Math.round(pe * 10) / 10,
-    sector: '',
-    market,
+    volume: volumeStr, marketCap: marketCapStr,
+    pe: Math.round(pe * 10) / 10, sector: '', market,
   };
 }
 
 async function searchByName(keyword: string) {
-  // Search both Chinese and US markets in parallel
-  const [cnResults, usResults] = await Promise.all([
+  const [cnResults, yahooResults] = await Promise.all([
     searchCNStocks(keyword),
-    searchUSStocks(keyword),
+    searchUSStocks(keyword), // Yahoo covers both US and JP
   ]);
-  return [...cnResults, ...usResults];
+  return [...cnResults, ...yahooResults];
 }
 
 async function searchCNStocks(keyword: string) {
@@ -184,7 +190,6 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { symbol, keyword, action } = body;
 
-    // Action: search by name → return suggestions
     if (action === 'search' && keyword) {
       const suggestions = await searchByName(keyword);
       return new Response(JSON.stringify({ suggestions }), {
@@ -192,16 +197,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Action: lookup by symbol code
     if (!symbol) {
       return new Response(JSON.stringify({ error: 'symbol or keyword required' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Route to Yahoo Finance for US stocks, Tencent for CN/HK
-    const stockInfo = isUSStock(symbol)
-      ? await fetchUSQuote(symbol)
+    const market = detectMarket(symbol);
+    const stockInfo = (market === 'US' || market === 'JP')
+      ? await fetchYahooQuote(symbol, market)
       : await fetchQuote(symbol);
 
     if (!stockInfo) {
