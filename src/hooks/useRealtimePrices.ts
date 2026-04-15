@@ -37,7 +37,7 @@ export function useRealtimePrices(symbols: string[]) {
     for (const batch of batches) {
       try {
         const { data, error } = await supabase.functions.invoke('lookup-stock', {
-          body: { symbols: batch },
+          body: { action: 'batch-quote', symbols: batch },
         });
         if (!error && data?.results) {
           allResults.push(...data.results);
