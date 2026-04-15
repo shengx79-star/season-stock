@@ -95,7 +95,7 @@ export function usePositionSnapshots() {
     since.setDate(since.getDate() - days);
     const sinceStr = since.toISOString().slice(0, 10);
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("position_snapshots")
       .select("*")
       .gte("snapshot_date", sinceStr)
