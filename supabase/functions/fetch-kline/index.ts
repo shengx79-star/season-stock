@@ -11,6 +11,10 @@ function isJPStock(symbol: string): boolean {
   return /^[0-9]{4}$/.test(symbol);
 }
 
+function isKRStock(symbol: string): boolean {
+  return /\.(KS|KQ)$/i.test(symbol);
+}
+
 // ─── Tencent Finance (A-share & HK) ───
 
 function toTencentCode(symbol: string): string {
@@ -100,7 +104,7 @@ async function fetchTencentKline(symbol: string, period: string, num: number): P
 
 // ─── Yahoo Finance (US & JP stocks) ───
 
-async function fetchYahooKline(symbol: string, period: string, num: number, isJP = false): Promise<KlineItem[]> {
+async function fetchYahooKline(symbol: string, period: string, num: number, isJP = false, isKR = false): Promise<KlineItem[]> {
   // Map num bars to Yahoo Finance range
   let range: string;
   if (period === 'week') {
@@ -112,7 +116,10 @@ async function fetchYahooKline(symbol: string, period: string, num: number, isJP
   }
 
   const interval = period === 'week' ? '1wk' : '1d';
-  const yahooSymbol = isJP ? `${symbol}.T` : symbol.toUpperCase();
+  let yahooSymbol: string;
+  if (isJP) yahooSymbol = `${symbol}.T`;
+  else if (isKR) yahooSymbol = symbol; // already has .KS/.KQ suffix
+  else yahooSymbol = symbol.toUpperCase();
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${interval}&range=${range}`;
 
   const resp = await fetch(url, {
@@ -161,11 +168,14 @@ async function fetchYahooKline(symbol: string, period: string, num: number, isJP
 // ─── Unified fetch ───
 
 async function fetchKlineForSymbol(symbol: string, period: string, num: number): Promise<KlineItem[]> {
+  if (isKRStock(symbol)) {
+    return fetchYahooKline(symbol, period, num, false, true);
+  }
   if (isUSStock(symbol)) {
-    return fetchYahooKline(symbol, period, num, false);
+    return fetchYahooKline(symbol, period, num, false, false);
   }
   if (isJPStock(symbol)) {
-    return fetchYahooKline(symbol, period, num, true);
+    return fetchYahooKline(symbol, period, num, true, false);
   }
   return fetchTencentKline(symbol, period, num);
 }
