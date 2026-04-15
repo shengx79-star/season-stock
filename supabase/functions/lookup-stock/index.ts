@@ -8,8 +8,11 @@ function isUSStock(symbol: string): boolean {
 }
 
 function isJPStock(symbol: string): boolean {
-  // 4-digit number → Japanese stock (Nikkei)
   return /^[0-9]{4}$/.test(symbol);
+}
+
+function isKRStock(symbol: string): boolean {
+  return /\.(KS|KQ)$/i.test(symbol);
 }
 
 function toTencentCode(symbol: string): string {
@@ -19,6 +22,7 @@ function toTencentCode(symbol: string): string {
 }
 
 function detectMarket(symbol: string): string {
+  if (isKRStock(symbol)) return 'KR';
   if (isUSStock(symbol)) return 'US';
   if (isJPStock(symbol)) return 'JP';
   if (/^0[0-9]{4}$/.test(symbol)) return 'HK';
@@ -29,7 +33,10 @@ function detectMarket(symbol: string): string {
 // ─── Yahoo Finance (US & JP stocks) ───
 
 async function fetchYahooQuote(symbol: string, market: string) {
-  const yahooSymbol = market === 'JP' ? `${symbol}.T` : symbol.toUpperCase();
+  let yahooSymbol: string;
+  if (market === 'JP') yahooSymbol = `${symbol}.T`;
+  else if (market === 'KR') yahooSymbol = symbol; // already has .KS/.KQ suffix
+  else yahooSymbol = symbol.toUpperCase();
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1d`;
   const resp = await fetch(url, {
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
@@ -102,6 +109,9 @@ async function searchUSStocks(keyword: string) {
       if (sym.endsWith('.T')) {
         market = 'jp';
         cleanSymbol = sym.replace('.T', '');
+      } else if (sym.endsWith('.KS') || sym.endsWith('.KQ')) {
+        market = 'kr';
+        cleanSymbol = sym; // keep suffix for unambiguous detection
       } else if (sym.includes('.')) {
         return null; // skip other exchanges
       }
@@ -204,7 +214,7 @@ Deno.serve(async (req) => {
     }
 
     const market = detectMarket(symbol);
-    const stockInfo = (market === 'US' || market === 'JP')
+    const stockInfo = (market === 'US' || market === 'JP' || market === 'KR')
       ? await fetchYahooQuote(symbol, market)
       : await fetchQuote(symbol);
 
