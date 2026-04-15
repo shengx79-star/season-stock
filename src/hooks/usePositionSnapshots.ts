@@ -22,6 +22,8 @@ export interface PositionSnapshot {
   trailingStopPct: number | null;
   marketRegime: string;
   marketTemperature: number;
+  industry: string;
+  themeCluster: string;
 }
 
 function rowToSnapshot(r: Record<string, unknown>): PositionSnapshot {
@@ -44,6 +46,8 @@ function rowToSnapshot(r: Record<string, unknown>): PositionSnapshot {
     trailingStopPct: r.trailing_stop_pct != null ? Number(r.trailing_stop_pct) : null,
     marketRegime: r.market_regime as string,
     marketTemperature: Number(r.market_temperature),
+    industry: (r.industry as string) ?? '',
+    themeCluster: (r.theme_cluster as string) ?? '',
   };
 }
 
@@ -83,6 +87,8 @@ export function usePositionSnapshots() {
       trailing_stop_pct:      pos.trailingStopPct,
       market_regime:          market.regime,
       market_temperature:     market.temperature,
+      industry:               pos.industry,
+      theme_cluster:          pos.themeCluster,
       user_id:                user.id,
     }));
 

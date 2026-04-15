@@ -227,6 +227,53 @@ const Review = () => {
   // Parameter suggestions
   const suggestions = useMemo(() => generateSuggestions(outcomes), [outcomes]);
 
+  // 按季节胜率统计
+  const seasonStats = useMemo(() => {
+    const stages = ["spring", "summer", "autumn", "winter"] as const;
+    return stages.map(stage => {
+      const group = outcomes.filter(o =>
+        o.snapshot.stage === stage &&
+        (o.status === "correct" || o.status === "wrong")
+      );
+      const correct = group.filter(o => o.status === "correct").length;
+      return {
+        stage,
+        total: group.length,
+        correct,
+        pct: group.length > 0 ? correct / group.length * 100 : null,
+        avgReturn: group.length > 0
+          ? group.reduce((s, o) => s + (o.priceChangePct ?? 0), 0) / group.length
+          : null,
+      };
+    }).filter(s => s.total > 0);
+  }, [outcomes]);
+
+  // 按置信度档胜率统计
+  const confStats = useMemo(() => {
+    const bands = [
+      { label: "<50%", min: 0,    max: 0.5  },
+      { label: "50–70%", min: 0.5,  max: 0.7  },
+      { label: "70–85%", min: 0.7,  max: 0.85 },
+      { label: ">85%",  min: 0.85, max: 1.01 },
+    ];
+    return bands.map(b => {
+      const group = outcomes.filter(o =>
+        o.snapshot.confidence >= b.min && o.snapshot.confidence < b.max &&
+        (o.status === "correct" || o.status === "wrong")
+      );
+      const correct = group.filter(o => o.status === "correct").length;
+      return {
+        label: b.label,
+        total: group.length,
+        correct,
+        pct: group.length > 0 ? correct / group.length * 100 : null,
+        avgReturn: group.length > 0
+          ? group.reduce((s, o) => s + (o.priceChangePct ?? 0), 0) / group.length
+          : null,
+      };
+    }).filter(s => s.total > 0);
+  }, [outcomes]);
+
   // Selected date outcomes
   const selectedOutcomes = useMemo(() => {
     if (!selectedDate) return [];
@@ -338,6 +385,81 @@ const Review = () => {
 
           {/* Right: detail for selected date */}
           <div className="flex-1 overflow-y-auto p-4 md:p-6">
+            {/* Deep stats — always visible when there's evaluated data */}
+            {(seasonStats.length > 0 || confStats.length > 0) && (
+              <div className="max-w-3xl mb-6 space-y-4">
+                <h3 className="text-sm font-semibold text-foreground">深度统计</h3>
+
+                {/* Season win rate bars */}
+                {seasonStats.length > 0 && (
+                  <div className="rounded-lg border border-border bg-secondary/20 p-4 space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground mb-3">按季节胜率</div>
+                    {seasonStats.map(s => {
+                      const label = s.stage === "spring" ? "春" : s.stage === "summer" ? "夏" : s.stage === "autumn" ? "秋" : "冬";
+                      const color = s.stage === "spring" ? "hsl(var(--spring))" : s.stage === "summer" ? "hsl(var(--summer))" : s.stage === "autumn" ? "hsl(var(--autumn))" : "hsl(var(--winter))";
+                      return (
+                        <div key={s.stage} className="flex items-center gap-2">
+                          <span className="w-4 text-xs font-bold" style={{ color }}>{label}</span>
+                          <div className="flex-1 relative h-5 bg-secondary rounded overflow-hidden">
+                            <div
+                              className="h-full rounded transition-all"
+                              style={{ width: `${s.pct ?? 0}%`, backgroundColor: color, opacity: 0.7 }}
+                            />
+                            <span className="absolute inset-0 flex items-center px-2 text-[10px] font-medium text-foreground">
+                              {s.pct!.toFixed(0)}% 胜率
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground w-16 text-right">
+                            {s.total}样本
+                            {s.avgReturn !== null && (
+                              <span className={s.avgReturn >= 0 ? " text-green-500" : " text-red-500"}>
+                                {" "}{s.avgReturn >= 0 ? "+" : ""}{s.avgReturn.toFixed(1)}%
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Confidence band table */}
+                {confStats.length > 0 && (
+                  <div className="rounded-lg border border-border bg-secondary/20 p-4">
+                    <div className="text-xs font-medium text-muted-foreground mb-3">置信度分布</div>
+                    <div className="grid grid-cols-[60px_1fr_56px_56px] gap-x-2 gap-y-1 text-[10px]">
+                      <span className="text-muted-foreground">区间</span>
+                      <span className="text-muted-foreground">胜率</span>
+                      <span className="text-muted-foreground text-right">均收益</span>
+                      <span className="text-muted-foreground text-right">样本</span>
+                      {confStats.map(c => (
+                        <>
+                          <span key={c.label + "_l"} className="font-mono text-foreground">{c.label}</span>
+                          <div key={c.label + "_b"} className="relative h-4 bg-secondary rounded overflow-hidden">
+                            <div
+                              className="h-full rounded"
+                              style={{
+                                width: `${c.pct ?? 0}%`,
+                                background: `hsl(${(c.pct ?? 0) >= 60 ? "var(--spring)" : (c.pct ?? 0) >= 45 ? "var(--autumn)" : "0 70% 50%"})`,
+                                opacity: 0.65,
+                              }}
+                            />
+                            <span className="absolute inset-0 flex items-center px-1.5 text-[9px] font-medium text-foreground">
+                              {c.pct!.toFixed(0)}%
+                            </span>
+                          </div>
+                          <span key={c.label + "_r"} className={`text-right ${(c.avgReturn ?? 0) >= 0 ? "text-green-500" : "text-red-500"}`}>
+                            {c.avgReturn !== null ? `${c.avgReturn >= 0 ? "+" : ""}${c.avgReturn.toFixed(1)}%` : "—"}
+                          </span>
+                          <span key={c.label + "_n"} className="text-right text-muted-foreground">{c.total}</span>
+                        </>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {selectedDate && selectedOutcomes.length > 0 ? (
               <div className="max-w-3xl space-y-4">
                 {/* Date header */}

@@ -342,6 +342,8 @@ const Portfolio = () => {
                   </div>
                 </div>
               )}
+              {/* 行业分布 */}
+              <IndustryBreakdown positions={portfolio.positions} totalAssets={config?.totalAssets ?? 0} />
             </div>
           )}
 
@@ -472,16 +474,30 @@ const Portfolio = () => {
               })()
             ) : (
               /* ── 普通列表视图 ── */
-              filteredPositions.map((pos) => (
+              filteredPositions.map((pos) => {
+                const livePrice = liveQuotes.get(pos.symbol)?.price ?? pos.currentPrice;
+                const stopPct = pos.hardStopPct ?? pos.trailingStopPct ?? null;
+                const stopBufferPct = (stopPct != null && pos.costBasis > 0)
+                  ? (livePrice - pos.costBasis * (1 - stopPct / 100)) / livePrice * 100
+                  : null;
+                const nearStop = stopBufferPct != null && stopBufferPct <= 3 && pos.costBasis > 0;
+                return (
                 <button
                   key={pos.symbol}
                   onClick={() => { setSelectedSymbol(pos.symbol); setEditingPosition(false); setMobileShowDetail(true); }}
                   className={`w-full px-3 py-2.5 text-left border-l-3 border-b border-border transition-colors ${
-                    selectedSymbol === pos.symbol
-                      ? `bg-primary/5 ${actionBorderColors[pos.action]}`
-                      : `hover:bg-secondary/50 border-l-transparent`
+                    nearStop
+                      ? `bg-destructive/5 border-l-destructive`
+                      : selectedSymbol === pos.symbol
+                        ? `bg-primary/5 ${actionBorderColors[pos.action]}`
+                        : `hover:bg-secondary/50 border-l-transparent`
                   }`}
                 >
+                  {nearStop && (
+                    <div className="flex items-center gap-1 text-[10px] font-medium text-destructive mb-1.5 bg-destructive/10 -mx-3 -mt-2.5 px-3 py-1">
+                      ⚠️ 距止损仅 {stopBufferPct!.toFixed(1)}%，注意风险
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -536,6 +552,15 @@ const Portfolio = () => {
                       <div className="text-[11px] text-muted-foreground">
                         目标 {formatMoney(pos.finalTargetValue)}
                       </div>
+                      {stopBufferPct != null && (
+                        <div className={`text-[10px] font-medium mt-0.5 ${
+                          stopBufferPct <= 3 ? "text-destructive"
+                          : stopBufferPct <= 8 ? "text-[hsl(var(--autumn))]"
+                          : "text-muted-foreground/60"
+                        }`}>
+                          距止损 {stopBufferPct.toFixed(1)}%
+                        </div>
+                      )}
                     </div>
                   </div>
                   {/* 迷你仓位进度条：当前持仓 vs 目标 */}
@@ -564,7 +589,8 @@ const Portfolio = () => {
                     </div>
                   )}
                 </button>
-              ))
+                );
+              })
             )}
             {!portfolio || portfolio.positions.length === 0 ? (
               <div className="p-6 text-center text-muted-foreground text-xs">
@@ -1255,6 +1281,80 @@ function formatMoney(value: number): string {
     return `¥${(value / 10000).toFixed(1)}万`;
   }
   return `¥${value.toFixed(0)}`;
+}
+
+// ─── 行业分布组件 ───────────────────────────────────────────────
+
+const INDUSTRY_CAP_PCT = 0.25;
+const INDUSTRY_COLORS = [
+  "bg-[hsl(var(--spring))]", "bg-primary", "bg-[hsl(var(--autumn))]",
+  "bg-purple-500", "bg-cyan-500", "bg-pink-500", "bg-yellow-500", "bg-teal-500",
+];
+
+function IndustryBreakdown({ positions, totalAssets }: { positions: StockPositionResult[]; totalAssets: number }) {
+  const [open, setOpen] = useState(false);
+
+  const groups = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of positions) {
+      const key = p.industry || "其他";
+      map.set(key, (map.get(key) ?? 0) + p.currentPositionValue);
+    }
+    const total = [...map.values()].reduce((s, v) => s + v, 0) || 1;
+    return [...map.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, val], i) => ({
+        name,
+        val,
+        pct: val / total * 100,
+        overLimit: totalAssets > 0 && val > totalAssets * INDUSTRY_CAP_PCT,
+        color: INDUSTRY_COLORS[i % INDUSTRY_COLORS.length],
+      }));
+  }, [positions, totalAssets]);
+
+  if (groups.length === 0) return null;
+
+  return (
+    <div className="mt-2 pt-2 border-t border-border/50">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <span>行业分布</span>
+        <span>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-1">
+          {/* 堆叠条 */}
+          <div className="h-2 rounded-full overflow-hidden flex gap-px">
+            {groups.map(g => (
+              <div
+                key={g.name}
+                className={`h-full ${g.color} ${g.overLimit ? "opacity-90" : "opacity-60"}`}
+                style={{ width: `${g.pct}%` }}
+                title={`${g.name} ${g.pct.toFixed(1)}%`}
+              />
+            ))}
+          </div>
+          {/* 图例 */}
+          <div className="space-y-0.5">
+            {groups.map(g => (
+              <div key={g.name} className="flex items-center justify-between text-[10px]">
+                <div className="flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-sm shrink-0 ${g.color}`} />
+                  <span className="text-muted-foreground truncate max-w-[100px]">{g.name}</span>
+                  {g.overLimit && <span className="text-[hsl(var(--autumn))]">⚠️</span>}
+                </div>
+                <span className={`font-medium ${g.overLimit ? "text-[hsl(var(--autumn))]" : "text-foreground"}`}>
+                  {g.pct.toFixed(1)}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default Portfolio;
