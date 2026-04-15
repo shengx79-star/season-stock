@@ -98,9 +98,9 @@ async function fetchTencentKline(symbol: string, period: string, num: number): P
     : parseTencentKlines(data, code);
 }
 
-// ─── Yahoo Finance (US stocks) ───
+// ─── Yahoo Finance (US & JP stocks) ───
 
-async function fetchYahooKline(symbol: string, period: string, num: number): Promise<KlineItem[]> {
+async function fetchYahooKline(symbol: string, period: string, num: number, isJP = false): Promise<KlineItem[]> {
   // Map num bars to Yahoo Finance range
   let range: string;
   if (period === 'week') {
