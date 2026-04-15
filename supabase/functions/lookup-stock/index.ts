@@ -198,11 +198,30 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { symbol, keyword, action } = body;
+    const { symbol, keyword, action, symbols } = body;
 
     if (action === 'search' && keyword) {
       const suggestions = await searchByName(keyword);
       return new Response(JSON.stringify({ suggestions }), {
+        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Batch quote: fetch multiple symbols at once
+    if (action === 'batch-quote' && Array.isArray(symbols) && symbols.length > 0) {
+      const results: Record<string, any> = {};
+      for (const sym of symbols.slice(0, 50)) {
+        try {
+          const market = detectMarket(sym);
+          const info = (market === 'US' || market === 'JP' || market === 'KR')
+            ? await fetchYahooQuote(sym, market)
+            : await fetchQuote(sym);
+          if (info) results[sym] = info;
+        } catch (e) {
+          console.error(`batch-quote error for ${sym}:`, e);
+        }
+      }
+      return new Response(JSON.stringify({ results }), {
         status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
