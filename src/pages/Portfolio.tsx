@@ -216,37 +216,35 @@ const Portfolio = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="border-b border-border px-4 md:px-6 py-3 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 md:gap-6 min-w-0">
-            {mobileShowDetail && selectedSymbol ? (
-              <button onClick={() => setMobileShowDetail(false)} className="md:hidden p-1 -ml-1 rounded hover:bg-secondary">
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-            ) : null}
-            <span className="text-xl md:text-2xl font-bold tracking-tight">
-              <span className="text-[hsl(var(--spring))]">股</span>
-              <span className="text-destructive">票</span>
-              <span className="text-[hsl(var(--autumn))]">四</span>
-              <span className="text-primary">季</span>
-            </span>
-            <AppNav />
-          </div>
+      <header className="border-b border-border px-3 md:px-6 py-2 md:py-3 shrink-0">
+        <div className="flex items-center gap-2 md:gap-6 min-w-0">
+          {mobileShowDetail && selectedSymbol ? (
+            <button onClick={() => setMobileShowDetail(false)} className="md:hidden p-1 -ml-1 rounded hover:bg-secondary">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          ) : null}
+          <span className="text-lg md:text-2xl font-bold tracking-tight shrink-0">
+            <span className="text-[hsl(var(--spring))]">股</span>
+            <span className="text-destructive">票</span>
+            <span className="text-[hsl(var(--autumn))]">四</span>
+            <span className="text-primary">季</span>
+          </span>
+          <AppNav />
           <button
             onClick={() => {
               if (config) { setEditTotalAssets(config.totalAssets.toString()); setEditQuotaPct(config.defaultQuotaPct.toString()); }
               setShowConfig(!showConfig);
             }}
-            className="p-2 rounded-lg hover:bg-secondary transition-colors"
+            className="p-1.5 md:p-2 rounded-lg hover:bg-secondary transition-colors ml-auto shrink-0"
           >
-            <Settings className="w-5 h-5 text-muted-foreground" />
+            <Settings className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground" />
           </button>
         </div>
       </header>
 
       {/* Config panel */}
       {showConfig && config && (
-        <div className="border-b border-border px-6 py-4 bg-card">
+        <div className="border-b border-border px-3 md:px-6 py-3 md:py-4 bg-card">
           <div className="max-w-xl mx-auto">
             <h3 className="font-semibold text-sm mb-3">组合配置</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -277,34 +275,31 @@ const Portfolio = () => {
         }`}>
           {/* Market summary bar */}
           {portfolio && (
-            <div className="p-3 border-b border-border bg-card">
-              <div className="flex items-center justify-between mb-2">
+            <div className="px-2.5 md:p-3 py-2.5 border-b border-border bg-card">
+              <div className="flex items-center justify-between mb-1.5 md:mb-2 flex-wrap gap-1">
                 <span className="text-xs font-medium flex items-center gap-1">
                   <TrendingUp className="w-3 h-3" /> {regimeLabels[portfolio.market.regime]}
                 </span>
-                <div className="flex items-center gap-2">
-                  {/* 实时行情状态 */}
-                  <div className="flex items-center gap-1">
-                    <span className={`flex items-center gap-1 text-[10px] font-medium ${isMarketOpen ? "text-green-500" : "text-muted-foreground"}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${isMarketOpen ? "bg-green-500 animate-pulse" : "bg-muted-foreground"}`} />
-                      {isMarketOpen ? "盘中" : "已收盘"}
-                    </span>
-                    {liveUpdatedAt && (
-                      <span className="text-[10px] text-muted-foreground/60">{formatBJTime(liveUpdatedAt)}</span>
-                    )}
-                    <button onClick={refreshLive} className="p-0.5 hover:text-foreground text-muted-foreground/60 transition-colors" title="手动刷新">
-                      <RefreshCw className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <span className={`text-sm font-bold flex items-center gap-1 ${
-                  portfolio.market.temperature > 60 ? "text-[hsl(var(--summer))]"
-                  : portfolio.market.temperature > 40 ? "text-[hsl(var(--autumn))]"
-                  : portfolio.market.temperature > 20 ? "text-[hsl(var(--spring))]"
-                  : "text-primary"
-                }`}>
-                  <span className="text-xs font-normal text-muted-foreground">市场热度</span>
-                  {Math.round(portfolio.market.temperature)}°
-                </span>
+                <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
+                  <span className={`flex items-center gap-1 text-[10px] font-medium ${isMarketOpen ? "text-green-500" : "text-muted-foreground"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${isMarketOpen ? "bg-green-500 animate-pulse" : "bg-muted-foreground"}`} />
+                    {isMarketOpen ? "盘中" : "收盘"}
+                  </span>
+                  {liveUpdatedAt && (
+                    <span className="text-[10px] text-muted-foreground/60">{formatBJTime(liveUpdatedAt)}</span>
+                  )}
+                  <button onClick={refreshLive} className="p-0.5 hover:text-foreground text-muted-foreground/60 transition-colors" title="刷新">
+                    <RefreshCw className="w-3 h-3" />
+                  </button>
+                  <span className={`text-xs md:text-sm font-bold flex items-center gap-0.5 ${
+                    portfolio.market.temperature > 60 ? "text-[hsl(var(--summer))]"
+                    : portfolio.market.temperature > 40 ? "text-[hsl(var(--autumn))]"
+                    : portfolio.market.temperature > 20 ? "text-[hsl(var(--spring))]"
+                    : "text-primary"
+                  }`}>
+                    <span className="text-[10px] md:text-xs font-normal text-muted-foreground">热度</span>
+                    {Math.round(portfolio.market.temperature)}°
+                  </span>
                 </div>
               </div>
               <div className="flex gap-1 text-[10px] flex-wrap mb-2">
