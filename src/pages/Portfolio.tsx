@@ -952,7 +952,7 @@ function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSav
                 <input type="number" value={posForm.quotaValue}
                   onChange={(e) => onFormChange({ ...posForm, quotaValue: e.target.value })}
                   onBlur={onSave}
-                  placeholder={`默认${Math.round(totalAssets * defaultQuotaPct / 100 / 10000)}万`}
+                  placeholder={`总资产${defaultQuotaPct}% = ${Math.round(totalAssets * defaultQuotaPct / 100 / 10000)}万`}
                   className={inputCls + " placeholder:text-muted-foreground/50 placeholder:text-[10px]"} />
               </div>
             </div>
