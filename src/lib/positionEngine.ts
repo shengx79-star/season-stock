@@ -115,6 +115,7 @@ export interface StockPositionResult {
   liquidityCappedValue: number;
   allowedEntryValue: number;
   // v3.2: 集中度约束
+  trendBucketValue: number;      // v3.3: max(0, currentValue - coreTarget) — summer trend float
   industry: string;
   themeCluster: string;
   concentrationConstraint: {
@@ -506,10 +507,16 @@ function getAction(
     return { action: "hold", priority: 5, notes: ["🍂 秋季，无持仓"] };
   }
 
-  // Reduce if over target
+  // Reduce if over target — summer uses trend bucket (trailing stop manages exit)
   if (currentValue > targetValue && Math.abs(gap) > threshold) {
-    notes.push("📊 当前仓位高于目标，需减仓");
-    return { action: "reduce", priority: 1, notes };
+    if (stage === "summer") {
+      const trendPct = ((currentValue - targetValue) / targetValue * 100).toFixed(0);
+      notes.push(`📈 趋势桶运行中（超配额 +${trendPct}%），跟踪止盈保护`);
+      // fall through to hold — trailing stop handles the exit
+    } else {
+      notes.push("📊 当前仓位高于目标，需减仓");
+      return { action: "reduce", priority: 1, notes };
+    }
   }
 
   // Enter / Add
@@ -744,6 +751,7 @@ export function computePortfolio(
       liquidityCappedValue: liquidityCappedValue === Infinity ? 0 : liquidityCappedValue,
       allowedEntryValue,
       // v3.2: 集中度约束（在 Layer 2.95 填充）
+      trendBucketValue: Math.max(0, input.positionValue - executableTargetValue),
       industry: input.industry,
       themeCluster: input.themeCluster,
       concentrationConstraint: null,

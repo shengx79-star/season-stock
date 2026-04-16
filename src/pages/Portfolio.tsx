@@ -550,6 +550,11 @@ const Portfolio = () => {
                       <div className="text-[11px] text-muted-foreground">
                         目标 {formatMoney(pos.finalTargetValue)}
                       </div>
+                      {pos.trendBucketValue > 0 && (
+                        <div className="text-[10px] text-[hsl(var(--summer))] font-medium mt-0.5">
+                          趋势 +{formatMoney(pos.trendBucketValue)}
+                        </div>
+                      )}
                       {stopBufferPct != null && (
                         <div className={`text-[10px] font-medium mt-0.5 ${
                           stopBufferPct <= 3 ? "text-destructive"
