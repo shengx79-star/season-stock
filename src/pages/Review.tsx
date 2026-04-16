@@ -516,7 +516,7 @@ const Review = () => {
 
                 {/* Rows */}
                 {selectedOutcomes.map((o) => (
-                  <SnapshotRow key={o.snapshot.symbol} outcome={o} />
+                  <SnapshotRow key={o.snapshot.symbol} outcome={o} evalDays={evalDays} />
                 ))}
               </div>
             ) : (
@@ -531,11 +531,59 @@ const Review = () => {
   );
 };
 
+// ─── Analysis generator ───────────────────────────────────
+
+function generateRowAnalysis(outcome: SnapshotOutcome, evalDays: number): string {
+  const { snapshot: s, priceChangePct, stopHit, status } = outcome;
+
+  if (status === "pending") return `等待 ${evalDays} 个交易日后的K线数据。`;
+  if (status === "neutral") return "持有建议无方向性，不参与胜率统计。";
+
+  const isEnter = s.action === "enter" || s.action === "add";
+  const isExit  = s.action === "reduce" || s.action === "exit_autumn"
+                  || s.action === "take_profit" || s.action === "force_exit";
+  const chg = priceChangePct != null
+    ? `${priceChangePct > 0 ? "+" : ""}${priceChangePct.toFixed(1)}%`
+    : "";
+
+  const parts: string[] = [];
+
+  if (status === "correct" && isEnter) {
+    parts.push(`建仓方向正确，${evalDays}日后上涨 ${chg}`);
+    if (stopHit) parts.push("期间曾触及止损位但最终收涨，风控与收益并存");
+    if (s.confidence >= 0.85) parts.push("高置信度信号兑现");
+    else if (s.confidence < 0.5) parts.push("低置信度信号偶然成功，注意样本偶然性");
+    if (s.stage === "winter") parts.push("冬季抄底信号有效");
+  } else if (status === "wrong" && isEnter) {
+    parts.push(`建仓方向偏差，${evalDays}日后下跌 ${chg}`);
+    if (stopHit) parts.push("止损触发，风控生效，损失在可控范围内");
+    else parts.push("未触及止损位，浮亏中");
+    if (s.stage === "spring") parts.push("春季误判风险本就偏高，属于策略已知弱点");
+    if (s.confidence >= 0.7) parts.push("中高置信度仍出错，值得回顾分类指标");
+  } else if (status === "correct" && isExit) {
+    parts.push(`退出/减仓判断正确，股价随后下跌 ${chg}，规避了损失`);
+    if (s.action === "exit_autumn") parts.push("秋季清仓策略执行有效");
+    if (s.action === "force_exit") parts.push("强制止损后方向验证正确");
+  } else if (status === "wrong" && isExit) {
+    parts.push(`退出/减仓过早，股价随后上涨 ${chg}，错过了潜在收益`);
+    if (s.action === "exit_autumn") parts.push("秋季判定可能过于敏感，可考虑提高阈值");
+    if (s.action === "reduce") parts.push("减仓信号误发，股价仍在上行趋势中");
+    if (s.action === "take_profit") parts.push("止盈触发后仍继续上涨，跟踪止盈参数可适当放宽");
+  }
+
+  // Add market context note
+  if (s.marketTemperature < 25) parts.push("当时市场极度偏冷");
+  else if (s.marketTemperature > 75) parts.push("当时市场偏热，追高风险较高");
+
+  return parts.join("；") + "。";
+}
+
 // ─── SnapshotRow ──────────────────────────────────────────
 
-function SnapshotRow({ outcome }: { outcome: SnapshotOutcome }) {
+function SnapshotRow({ outcome, evalDays }: { outcome: SnapshotOutcome; evalDays: number }) {
   const { snapshot: s, priceChangePct, stopHit, status } = outcome;
   const [expanded, setExpanded] = useState(false);
+  const analysis = generateRowAnalysis(outcome, evalDays);
 
   const statusIcon = status === "correct" ? (
     <TrendingUp className="w-4 h-4 text-green-500" />
@@ -567,6 +615,7 @@ function SnapshotRow({ outcome }: { outcome: SnapshotOutcome }) {
             <span className="text-[11px] text-muted-foreground shrink-0">{seasonEmojis[s.stage as keyof typeof seasonEmojis] || ""}</span>
           </div>
           <div className="text-[10px] text-muted-foreground mt-0.5">{s.symbol}</div>
+          <div className="text-[10px] text-muted-foreground/70 mt-0.5 italic leading-snug">{analysis}</div>
         </div>
         {/* Current price at snapshot */}
         <span className="text-xs text-right">¥{s.currentPrice.toFixed(2)}</span>
