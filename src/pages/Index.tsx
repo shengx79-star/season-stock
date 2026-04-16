@@ -220,7 +220,7 @@ const Index = () => {
     return (
       <div className="min-h-screen bg-background">
         {renderSearchHeader(handleBack)}
-        <main className="px-6 py-8">
+        <main className="px-3 md:px-6 py-4 md:py-8">
           <SelectedStockAnalysis stock={selectedStock} onBack={handleBack} />
         </main>
       </div>
@@ -232,13 +232,13 @@ const Index = () => {
     return (
       <div className="min-h-screen bg-background">
         {renderSearchHeader(handleClear)}
-        <div className="border-b border-border px-6">
-          <div className="max-w-5xl mx-auto flex gap-1 -mb-px">
+        <div className="border-b border-border px-3 md:px-6">
+          <div className="max-w-5xl mx-auto flex gap-0.5 md:gap-1 -mb-px overflow-x-auto">
             {seasonFilters.map((filter) => (
               <button
                 key={filter}
                 onClick={() => setActiveFilter(filter)}
-                className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                className={`px-2.5 md:px-4 py-2.5 md:py-3 text-xs md:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                   activeFilter === filter
                     ? "border-primary text-primary"
                     : "border-transparent text-muted-foreground hover:text-foreground"
@@ -249,28 +249,28 @@ const Index = () => {
             ))}
           </div>
         </div>
-        <main className="px-6 py-6">
+        <main className="px-3 md:px-6 py-4 md:py-6">
           <div className="max-w-5xl mx-auto">
-            <div className="flex items-center gap-3 mb-6">
-              <p className="text-sm text-muted-foreground">
-                找到 {filteredResults.length} 只股票
+            <div className="flex items-center gap-2 md:gap-3 mb-4 md:mb-6">
+              <p className="text-xs md:text-sm text-muted-foreground">
+                {filteredResults.length} 只股票
               </p>
               {refreshing && (
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1 text-[10px] md:text-xs text-muted-foreground">
                   <Loader2 className="w-3 h-3 animate-spin" />
-                  刷新行情中...
+                  刷新中...
                 </span>
               )}
               {!refreshing && (
                 <button
                   onClick={refreshPrices}
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="text-[10px] md:text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  ↻ 刷新行情
+                  ↻ 刷新
                 </button>
               )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
               {filteredResults.map((stock) => (
                 <StockCard
                   key={stock.symbol}
