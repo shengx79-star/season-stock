@@ -95,8 +95,11 @@ const Portfolio = () => {
     if (!config || portfolioStocks.length === 0) return null;
     // 市场层用全量股票（allClassifications）保证与 UI 展示一致
     // 个股数据仍用持仓股票（classifications）
+    const defaultQuotaValue = config.defaultQuotaPct > 0
+      ? config.totalAssets * (config.defaultQuotaPct / 100)
+      : 100000; // fallback if not configured
     return computePortfolio(
-      config.totalAssets, 100000, positionInputs, classifications,
+      config.totalAssets, defaultQuotaValue, positionInputs, classifications,
       undefined,
       allClassifications.size > 0 ? allClassifications : undefined,
     );
