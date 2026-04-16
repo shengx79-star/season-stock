@@ -638,6 +638,25 @@ const Portfolio = () => {
                 setSelectedSymbol(null);
                 setMobileShowDetail(false);
               }}
+              onTransactionSaved={async (type, price, shares) => {
+                const rec = positions.find(p => p.symbol === selectedPos.symbol);
+                if (!rec) return;
+                let newShares = rec.shares;
+                let newCostBasis = rec.costBasis;
+                let newPositionValue = rec.positionValue;
+                if (type === "buy" || type === "add") {
+                  newShares = rec.shares + shares;
+                  newCostBasis = newShares > 0
+                    ? (rec.shares * rec.costBasis + shares * price) / newShares
+                    : price;
+                  newPositionValue = newShares * selectedPos.currentPrice;
+                } else if (type === "reduce") {
+                  newShares = Math.max(0, rec.shares - shares);
+                  newPositionValue = newShares * selectedPos.currentPrice;
+                  // costBasis stays the same on reduce
+                }
+                await upsertPosition({ ...rec, shares: newShares, costBasis: newCostBasis, positionValue: newPositionValue });
+              }}
             />
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -788,9 +807,10 @@ interface DetailPanelProps {
   onFormChange: (form: { positionValue: string; costBasis: string; shares: string; quotaValue: string }) => void;
   onRemoveFromPortfolio: () => void;
   onLoggedExit: () => Promise<void>;  // remove position directly (already logged)
+  onTransactionSaved: (type: TransactionType, price: number, shares: number) => Promise<void>;
 }
 
-function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSave, onFormChange, onRemoveFromPortfolio, onLoggedExit }: DetailPanelProps) {
+function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSave, onFormChange, onRemoveFromPortfolio, onLoggedExit, onTransactionSaved }: DetailPanelProps) {
   const { addTransaction, getBySymbol, deleteTransaction } = useTransactions();
   const [txList, setTxList] = useState<import("@/hooks/useTransactions").Transaction[]>([]);
   const [showTxForm, setShowTxForm] = useState(false);
@@ -819,9 +839,11 @@ function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSav
       await onLoggedExit();
       return;
     }
+    // Buy/add/reduce: update position data
+    await onTransactionSaved(txForm.type, price, shares);
     const updated = await getBySymbol(pos.symbol);
     setTxList(updated);
-    toast.success("交易已记录");
+    toast.success("交易已记录，持仓已更新");
   };
 
   const quota = pos.effectiveQuota > 0 ? pos.effectiveQuota : totalAssets;
