@@ -68,6 +68,7 @@ const Portfolio = () => {
   const [sortDesc, setSortDesc] = useState(true);
   const [viewMode, setViewMode] = useState<"list" | "queue">("list");
   const [exitConfirm, setExitConfirm] = useState<{ symbol: string; name: string; price: number; shares: number } | null>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
   const { saveSnapshot } = usePositionSnapshots();
   const { addTransaction } = useTransactions();
 
@@ -508,6 +509,15 @@ const Portfolio = () => {
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${actionColors[pos.action]}`}>
                           {actionLabels[pos.action]}
                         </span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedSymbol(pos.symbol); setMobileShowDetail(true); setShowAnalysis(true); }}
+                          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-secondary hover:bg-secondary/80 text-muted-foreground shrink-0"
+                        >
+                          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>
+                          </svg>
+                          四季
+                        </button>
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-[11px] text-muted-foreground">{pos.symbol}</span>
@@ -623,6 +633,8 @@ const Portfolio = () => {
               totalAssets={config?.totalAssets ?? 0}
               defaultQuotaPct={config?.defaultQuotaPct ?? 10}
               market={portfolio?.market ?? null}
+              showAnalysis={showAnalysis}
+              setShowAnalysis={setShowAnalysis}
               onSave={() => handleSavePosition(selectedPos.symbol)}
               onFormChange={setPosForm}
               onRemoveFromPortfolio={() => {
@@ -804,6 +816,8 @@ interface DetailPanelProps {
   totalAssets: number;
   defaultQuotaPct: number;
   market: MarketContext | null;
+  showAnalysis: boolean;
+  setShowAnalysis: (v: boolean) => void;
   onSave: () => void;
   onFormChange: (form: { positionValue: string; costBasis: string; shares: string; quotaValue: string }) => void;
   onRemoveFromPortfolio: () => void;
@@ -811,8 +825,7 @@ interface DetailPanelProps {
   onTransactionSaved: (type: TransactionType, price: number, shares: number) => Promise<void>;
 }
 
-function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSave, onFormChange, onRemoveFromPortfolio, onLoggedExit, onTransactionSaved }: DetailPanelProps) {
-  const [showAnalysis, setShowAnalysis] = useState(false);
+function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, showAnalysis, setShowAnalysis, onSave, onFormChange, onRemoveFromPortfolio, onLoggedExit, onTransactionSaved }: DetailPanelProps) {
   const validStages = ["spring", "summer", "autumn", "winter"] as const;
   const stockForAnalysis = {
     symbol: pos.symbol, name: pos.name, price: pos.currentPrice,
