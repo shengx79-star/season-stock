@@ -41,7 +41,7 @@ const actionColors: Record<string, string> = {
   hold: "bg-secondary text-secondary-foreground",
 };
 
-const EVAL_DAYS = 5; // how many trading days after snapshot to evaluate
+// EVAL_DAYS is now a runtime state — see useState in Review component
 
 /** Find the index of the first kline on or after a given date string */
 function findDateIndex(klines: Candle[], date: string): number {
@@ -49,7 +49,7 @@ function findDateIndex(klines: Candle[], date: string): number {
   return klines.findIndex(k => k.date >= date);
 }
 
-function computeOutcome(snap: PositionSnapshot, klines: Candle[]): SnapshotOutcome {
+function computeOutcome(snap: PositionSnapshot, klines: Candle[], evalDays: number): SnapshotOutcome {
   const base: SnapshotOutcome = {
     snapshot: snap,
     priceChangePct: null,
@@ -58,16 +58,16 @@ function computeOutcome(snap: PositionSnapshot, klines: Candle[]): SnapshotOutco
   };
 
   const idx = findDateIndex(klines, snap.snapshotDate);
-  if (idx < 0 || idx + EVAL_DAYS >= klines.length) return base; // not enough future data
+  if (idx < 0 || idx + evalDays >= klines.length) return base; // not enough future data
 
   const entryPrice = snap.currentPrice;
-  const futureClose = klines[idx + EVAL_DAYS].close;
+  const futureClose = klines[idx + evalDays].close;
   const priceChangePct = entryPrice > 0 ? (futureClose - entryPrice) / entryPrice * 100 : null;
 
   // Stop hit: did any bar in the window breach the stop level?
   const stopPct = snap.hardStopPct ?? snap.trailingStopPct ?? null;
   const stopHit = stopPct != null
-    ? klines.slice(idx, idx + EVAL_DAYS).some(k => k.low < entryPrice * (1 - stopPct / 100))
+    ? klines.slice(idx, idx + evalDays).some(k => k.low < entryPrice * (1 - stopPct / 100))
     : false;
 
   const isEnter = snap.action === "enter" || snap.action === "add";
@@ -83,7 +83,7 @@ function computeOutcome(snap: PositionSnapshot, klines: Candle[]): SnapshotOutco
   return { snapshot: snap, priceChangePct, stopHit, status };
 }
 
-function generateSuggestions(outcomes: SnapshotOutcome[]): ParamSuggestion[] {
+function generateSuggestions(outcomes: SnapshotOutcome[], evalDays: number): ParamSuggestion[] {
   const evaluated = outcomes.filter(o => o.status !== "pending" && o.status !== "neutral");
   const suggestions: ParamSuggestion[] = [];
 
@@ -98,14 +98,14 @@ function generateSuggestions(outcomes: SnapshotOutcome[]): ParamSuggestion[] {
     if (pct > 70) {
       suggestions.push({
         title: "春季系数偏保守",
-        detail: `春季建仓/加仓 ${EVAL_DAYS}日准确率 ${pct.toFixed(0)}%（高于基准），当前系数 0.45，可尝试上调至 0.50–0.55`,
+        detail: `春季建仓/加仓 ${evalDays}日准确率 ${pct.toFixed(0)}%（高于基准），当前系数 0.45，可尝试上调至 0.50–0.55`,
         sampleCount: springEnter.length,
         accuracyPct: pct,
       });
     } else if (pct < 45) {
       suggestions.push({
         title: "春季信号误报偏多",
-        detail: `春季建仓/加仓 ${EVAL_DAYS}日准确率仅 ${pct.toFixed(0)}%，考虑提高置信度阈值（0.65→0.75）或减小春季系数（0.45→0.35）`,
+        detail: `春季建仓/加仓 ${evalDays}日准确率仅 ${pct.toFixed(0)}%，考虑提高置信度阈值（0.65→0.75）或减小春季系数（0.45→0.35）`,
         sampleCount: springEnter.length,
         accuracyPct: pct,
       });
@@ -120,7 +120,7 @@ function generateSuggestions(outcomes: SnapshotOutcome[]): ParamSuggestion[] {
     if (pct < 40) {
       suggestions.push({
         title: "冬季入场成功率偏低",
-        detail: `冬季建仓 ${EVAL_DAYS}日准确率 ${pct.toFixed(0)}%，建议提高冬季入场的置信度阈值（0.60→0.70）`,
+        detail: `冬季建仓 ${evalDays}日准确率 ${pct.toFixed(0)}%，建议提高冬季入场的置信度阈值（0.60→0.70）`,
         sampleCount: winterEnter.length,
         accuracyPct: pct,
       });
@@ -135,7 +135,7 @@ function generateSuggestions(outcomes: SnapshotOutcome[]): ParamSuggestion[] {
     if (falsePct > 50) {
       suggestions.push({
         title: "秋季退出信号误判偏多",
-        detail: `${falsePct.toFixed(0)}% 的秋季退出建议在 ${EVAL_DAYS} 日内股价反而上涨，秋季判定可能过于敏感`,
+        detail: `${falsePct.toFixed(0)}% 的秋季退出建议在 ${evalDays} 日内股价反而上涨，秋季判定可能过于敏感`,
         sampleCount: autumnExit.length,
         accuracyPct: 100 - falsePct,
       });
@@ -150,7 +150,7 @@ function generateSuggestions(outcomes: SnapshotOutcome[]): ParamSuggestion[] {
     if (pct > 75) {
       suggestions.push({
         title: "夏季系数可适当上调",
-        detail: `夏季持仓/加仓 ${EVAL_DAYS}日准确率 ${pct.toFixed(0)}%，当前系数 0.75，可尝试上调至 0.80`,
+        detail: `夏季持仓/加仓准确率 ${pct.toFixed(0)}%，当前系数 0.75，可尝试上调至 0.80`,
         sampleCount: summerBuy.length,
         accuracyPct: pct,
       });
@@ -169,6 +169,7 @@ const Review = () => {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(true);
+  const [evalDays, setEvalDays] = useState<1 | 3 | 5>(1);
 
   // Load snapshots
   useEffect(() => {
@@ -200,9 +201,9 @@ const Review = () => {
   const outcomes = useMemo<SnapshotOutcome[]>(() => {
     return snapshots.map(snap => {
       const klines = klineMap.get(snap.symbol) || [];
-      return computeOutcome(snap, klines);
+      return computeOutcome(snap, klines, evalDays);
     });
-  }, [snapshots, klineMap]);
+  }, [snapshots, klineMap, evalDays]);
 
   // Group by date
   const dateGroups = useMemo(() => {
@@ -225,7 +226,7 @@ const Review = () => {
   }, [outcomes]);
 
   // Parameter suggestions
-  const suggestions = useMemo(() => generateSuggestions(outcomes), [outcomes]);
+  const suggestions = useMemo(() => generateSuggestions(outcomes, evalDays), [outcomes, evalDays]);
 
   // 按季节胜率统计
   const seasonStats = useMemo(() => {
@@ -303,6 +304,22 @@ const Review = () => {
             <AppNav />
           </div>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            {/* Eval period toggle */}
+            <div className="flex items-center gap-1 text-xs">
+              <span className="text-muted-foreground mr-1">评估周期</span>
+              {([1, 3, 5] as const).map(d => (
+                <button
+                  key={d}
+                  onClick={() => setEvalDays(d)}
+                  className={`px-2 py-0.5 rounded transition-colors ${evalDays === d
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-secondary text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {d}日
+                </button>
+              ))}
+            </div>
             {overallAccuracy && (
               <span>
                 综合准确率{" "}
@@ -468,7 +485,7 @@ const Review = () => {
                   <span className="text-xs text-muted-foreground">{selectedOutcomes.length} 只持仓</span>
                   {(() => {
                     const ev = selectedOutcomes.filter(o => o.status === "correct" || o.status === "wrong");
-                    if (ev.length === 0) return <span className="text-xs text-muted-foreground">待 {EVAL_DAYS} 个交易日后验证</span>;
+                    if (ev.length === 0) return <span className="text-xs text-muted-foreground">待 {evalDays} 个交易日后验证</span>;
                     const c = ev.filter(o => o.status === "correct").length;
                     const p = c / ev.length * 100;
                     return (
@@ -492,7 +509,7 @@ const Review = () => {
                   <span>股票</span>
                   <span className="text-right">当时价</span>
                   <span className="text-right">置信度</span>
-                  <span className="text-right">{EVAL_DAYS}日后%</span>
+                  <span className="text-right">{evalDays}日后%</span>
                   <span className="text-center">止损</span>
                   <span className="text-center">结果</span>
                 </div>
