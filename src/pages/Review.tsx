@@ -292,53 +292,51 @@ const Review = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="border-b border-border px-4 md:px-6 py-3 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 md:gap-6">
-            <span className="text-xl md:text-2xl font-bold tracking-tight">
-              <span className="text-[hsl(var(--spring))]">股</span>
-              <span className="text-destructive">票</span>
-              <span className="text-[hsl(var(--autumn))]">四</span>
-              <span className="text-primary">季</span>
-            </span>
-            <AppNav />
-          </div>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            {/* Eval period toggle */}
-            <div className="flex items-center gap-1 text-xs">
-              <span className="text-muted-foreground mr-1">评估周期</span>
-              {([1, 3, 5] as const).map(d => (
-                <button
-                  key={d}
-                  onClick={() => setEvalDays(d)}
-                  className={`px-2 py-0.5 rounded transition-colors ${evalDays === d
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {d}日
-                </button>
-              ))}
-            </div>
-            {overallAccuracy && (
-              <span>
-                综合准确率{" "}
-                <span className={`font-bold ${overallAccuracy.pct >= 60 ? "text-green-500" : overallAccuracy.pct >= 45 ? "text-[hsl(var(--autumn))]" : "text-red-500"}`}>
-                  {overallAccuracy.pct.toFixed(0)}%
-                </span>
-                <span className="text-xs ml-1">({overallAccuracy.total}条)</span>
-              </span>
-            )}
-            {suggestions.length > 0 && (
+      <header className="border-b border-border px-3 md:px-6 py-2 md:py-3 shrink-0">
+        <div className="flex items-center gap-2 md:gap-6">
+          <span className="text-lg md:text-2xl font-bold tracking-tight shrink-0">
+            <span className="text-[hsl(var(--spring))]">股</span>
+            <span className="text-destructive">票</span>
+            <span className="text-[hsl(var(--autumn))]">四</span>
+            <span className="text-primary">季</span>
+          </span>
+          <AppNav />
+        </div>
+        {/* Second row: eval period + accuracy */}
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs">
+          <div className="flex items-center gap-1">
+            <span className="text-muted-foreground">周期</span>
+            {([1, 3, 5] as const).map(d => (
               <button
-                onClick={() => setShowSuggestions(!showSuggestions)}
-                className="flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/10 text-amber-600 text-xs font-medium hover:bg-amber-500/20"
+                key={d}
+                onClick={() => setEvalDays(d)}
+                className={`px-2 py-0.5 rounded transition-colors ${evalDays === d
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground hover:text-foreground"
+                }`}
               >
-                <AlertTriangle className="w-3 h-3" />
-                参数建议 {suggestions.length} 条
+                {d}日
               </button>
-            )}
+            ))}
           </div>
+          {overallAccuracy && (
+            <span className="text-muted-foreground">
+              准确率{" "}
+              <span className={`font-bold ${overallAccuracy.pct >= 60 ? "text-green-500" : overallAccuracy.pct >= 45 ? "text-[hsl(var(--autumn))]" : "text-red-500"}`}>
+                {overallAccuracy.pct.toFixed(0)}%
+              </span>
+              <span className="ml-0.5">({overallAccuracy.total})</span>
+            </span>
+          )}
+          {suggestions.length > 0 && (
+            <button
+              onClick={() => setShowSuggestions(!showSuggestions)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium hover:bg-amber-500/20"
+            >
+              <AlertTriangle className="w-3 h-3" />
+              建议{suggestions.length}条
+            </button>
+          )}
         </div>
       </header>
 
