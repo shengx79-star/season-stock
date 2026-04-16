@@ -4,6 +4,7 @@ import { usePortfolio } from "@/hooks/usePortfolio";
 import { useStockClassifications } from "@/hooks/useStockClassification";
 import { usePositionSnapshots } from "@/hooks/usePositionSnapshots";
 import { useRealtimePrices } from "@/hooks/useRealtimePrices";
+import { useTransactions, TX_LABELS, TX_COLORS, type TransactionType } from "@/hooks/useTransactions";
 import { formatBJTime } from "@/lib/marketHours";
 import {
   computePortfolio,
@@ -18,7 +19,7 @@ import {
 } from "@/lib/positionEngine";
 import { seasonLabels, seasonEmojis, type Season } from "@/lib/stockData";
 import { AppNav } from "@/components/AppNav";
-import { Settings, TrendingUp, Trash2, Loader2, DollarSign, Briefcase, ChevronLeft, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { Settings, TrendingUp, Trash2, Loader2, DollarSign, Briefcase, ChevronLeft, ChevronDown, ChevronRight, RefreshCw, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 const actionLabels: Record<ActionType, string> = {
@@ -65,7 +66,9 @@ const Portfolio = () => {
   const [sortBy, setSortBy] = useState<"default" | "value" | "pnl">("default");
   const [sortDesc, setSortDesc] = useState(true);
   const [viewMode, setViewMode] = useState<"list" | "queue">("list");
+  const [exitConfirm, setExitConfirm] = useState<{ symbol: string; name: string; price: number; shares: number } | null>(null);
   const { saveSnapshot } = usePositionSnapshots();
+  const { addTransaction } = useTransactions();
 
   // 实时行情
   const portfolioSymbols = useMemo(() => portfolioStocks.map(s => s.symbol), [portfolioStocks]);
@@ -620,11 +623,13 @@ const Portfolio = () => {
               market={portfolio?.market ?? null}
               onSave={() => handleSavePosition(selectedPos.symbol)}
               onFormChange={setPosForm}
-              onRemoveFromPortfolio={async () => {
-                await togglePortfolio(selectedPos.symbol, false);
-                removePosition(selectedPos.symbol);
-                setSelectedSymbol(null);
-                setMobileShowDetail(false);
+              onRemoveFromPortfolio={() => {
+                setExitConfirm({
+                  symbol: selectedPos.symbol,
+                  name:   selectedPos.name,
+                  price:  selectedPos.currentPrice,
+                  shares: positions.find(p => p.symbol === selectedPos.symbol)?.shares ?? 0,
+                });
               }}
             />
           ) : (
@@ -635,6 +640,40 @@ const Portfolio = () => {
         </div>
       </div>
     </div>
+
+    {/* Exit confirmation modal */}
+    {exitConfirm && (
+      <ExitConfirmModal
+        symbol={exitConfirm.symbol}
+        name={exitConfirm.name}
+        defaultPrice={exitConfirm.price}
+        defaultShares={exitConfirm.shares}
+        onConfirm={async (type, price, shares, notes) => {
+          await addTransaction({
+            symbol: exitConfirm.symbol,
+            name:   exitConfirm.name,
+            type, price, shares,
+            amount: price * shares,
+            txDate: new Date().toISOString().slice(0, 10),
+            notes,
+          });
+          await togglePortfolio(exitConfirm.symbol, false);
+          removePosition(exitConfirm.symbol);
+          setSelectedSymbol(null);
+          setMobileShowDetail(false);
+          setExitConfirm(null);
+          toast.success("交易已记录，持仓已移除");
+        }}
+        onSkip={async () => {
+          await togglePortfolio(exitConfirm.symbol, false);
+          removePosition(exitConfirm.symbol);
+          setSelectedSymbol(null);
+          setMobileShowDetail(false);
+          setExitConfirm(null);
+        }}
+        onCancel={() => setExitConfirm(null)}
+      />
+    )}
   );
 };
 
@@ -743,6 +782,31 @@ interface DetailPanelProps {
 }
 
 function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSave, onFormChange, onRemoveFromPortfolio }: DetailPanelProps) {
+  const { addTransaction, getBySymbol, deleteTransaction } = useTransactions();
+  const [txList, setTxList] = useState<import("@/hooks/useTransactions").Transaction[]>([]);
+  const [showTxForm, setShowTxForm] = useState(false);
+  const [txForm, setTxForm] = useState({ type: "buy" as TransactionType, price: "", shares: "", date: new Date().toISOString().slice(0, 10), notes: "" });
+
+  useEffect(() => {
+    getBySymbol(pos.symbol).then(setTxList);
+  }, [pos.symbol, getBySymbol]);
+
+  const handleAddTx = async () => {
+    const price = parseFloat(txForm.price);
+    const shares = parseFloat(txForm.shares);
+    if (!price || !shares) { toast.error("请填写价格和股数"); return; }
+    await addTransaction({
+      symbol: pos.symbol, name: pos.name, type: txForm.type,
+      price, shares, amount: price * shares,
+      txDate: txForm.date, notes: txForm.notes,
+    });
+    setTxForm({ type: "buy", price: "", shares: "", date: new Date().toISOString().slice(0, 10), notes: "" });
+    setShowTxForm(false);
+    const updated = await getBySymbol(pos.symbol);
+    setTxList(updated);
+    toast.success("交易已记录");
+  };
+
   const quota = pos.effectiveQuota > 0 ? pos.effectiveQuota : totalAssets;
   const positionPct = quota > 0 ? (pos.currentPositionValue / quota * 100) : 0;
   const targetPct   = quota > 0 ? (pos.finalTargetValue   / quota * 100) : 0;
@@ -1172,6 +1236,102 @@ function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSav
         </div>
       </div>
 
+      {/* Transaction log */}
+      <div className="border-t border-border pt-4 mt-2">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-medium text-foreground">交易记录</span>
+          <button
+            onClick={() => setShowTxForm(!showTxForm)}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-primary/10 text-primary hover:bg-primary/20"
+          >
+            <Plus className="w-3 h-3" /> 记录交易
+          </button>
+        </div>
+
+        {/* Add transaction form */}
+        {showTxForm && (
+          <div className="rounded-lg border border-border bg-secondary/20 p-3 mb-3 space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-muted-foreground">操作类型</label>
+                <select
+                  value={txForm.type}
+                  onChange={e => setTxForm(f => ({ ...f, type: e.target.value as TransactionType }))}
+                  className="w-full mt-0.5 h-7 rounded border border-border bg-background text-xs px-1.5"
+                >
+                  {(Object.keys(TX_LABELS) as TransactionType[]).map(t => (
+                    <option key={t} value={t}>{TX_LABELS[t]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground">日期</label>
+                <input type="date" value={txForm.date}
+                  onChange={e => setTxForm(f => ({ ...f, date: e.target.value }))}
+                  className="w-full mt-0.5 h-7 rounded border border-border bg-background text-xs px-1.5" />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground">成交价</label>
+                <input type="number" placeholder="0.00" value={txForm.price}
+                  onChange={e => setTxForm(f => ({ ...f, price: e.target.value }))}
+                  className="w-full mt-0.5 h-7 rounded border border-border bg-background text-xs px-1.5" />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground">股数</label>
+                <input type="number" placeholder="0" value={txForm.shares}
+                  onChange={e => setTxForm(f => ({ ...f, shares: e.target.value }))}
+                  className="w-full mt-0.5 h-7 rounded border border-border bg-background text-xs px-1.5" />
+              </div>
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground">备注（可选）</label>
+              <input type="text" placeholder="如：跟踪止盈触发" value={txForm.notes}
+                onChange={e => setTxForm(f => ({ ...f, notes: e.target.value }))}
+                className="w-full mt-0.5 h-7 rounded border border-border bg-background text-xs px-1.5" />
+            </div>
+            {txForm.price && txForm.shares && (
+              <div className="text-[10px] text-muted-foreground">
+                成交金额 ¥{(parseFloat(txForm.price) * parseFloat(txForm.shares)).toLocaleString("zh-CN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              </div>
+            )}
+            <div className="flex gap-2 pt-1">
+              <button onClick={handleAddTx} className="flex-1 h-7 rounded bg-primary text-primary-foreground text-xs font-medium">确认记录</button>
+              <button onClick={() => setShowTxForm(false)} className="px-3 h-7 rounded border border-border text-xs text-muted-foreground">取消</button>
+            </div>
+          </div>
+        )}
+
+        {/* Transaction list */}
+        {txList.length === 0 ? (
+          <div className="text-[11px] text-muted-foreground/60 py-2">暂无交易记录</div>
+        ) : (
+          <div className="space-y-1.5 max-h-48 overflow-y-auto">
+            {txList.map(tx => (
+              <div key={tx.id} className="flex items-center gap-2 text-[11px]">
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${TX_COLORS[tx.type]}`}>
+                  {TX_LABELS[tx.type]}
+                </span>
+                <span className="text-muted-foreground shrink-0">{tx.txDate.slice(5)}</span>
+                <span className="text-foreground">¥{tx.price.toFixed(2)}</span>
+                <span className="text-muted-foreground">×{tx.shares}</span>
+                <span className="text-muted-foreground flex-1 text-right">
+                  ¥{(tx.amount / 10000).toFixed(1)}万
+                </span>
+                <button
+                  onClick={async () => {
+                    await deleteTransaction(tx.id);
+                    setTxList(prev => prev.filter(t => t.id !== tx.id));
+                  }}
+                  className="text-muted-foreground/40 hover:text-destructive shrink-0"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Bottom actions */}
       <div className="flex gap-2">
         <button onClick={onRemoveFromPortfolio} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary">
@@ -1359,6 +1519,82 @@ function IndustryBreakdown({ positions, totalAssets }: { positions: StockPositio
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// =============================================
+// Exit Confirmation Modal
+// =============================================
+
+function ExitConfirmModal({
+  symbol, name, defaultPrice, defaultShares,
+  onConfirm, onSkip, onCancel,
+}: {
+  symbol: string; name: string; defaultPrice: number; defaultShares: number;
+  onConfirm: (type: TransactionType, price: number, shares: number, notes: string) => Promise<void>;
+  onSkip: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [type, setType] = useState<TransactionType>("exit");
+  const [price, setPrice] = useState(defaultPrice.toFixed(2));
+  const [shares, setShares] = useState(defaultShares.toString());
+  const [notes, setNotes] = useState("");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-background rounded-xl border border-border shadow-xl w-80 p-5 space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold">记录平仓交易</h3>
+          <p className="text-[11px] text-muted-foreground mt-0.5">{name}（{symbol}）</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <label className="text-[10px] text-muted-foreground">操作类型</label>
+            <select value={type} onChange={e => setType(e.target.value as TransactionType)}
+              className="w-full mt-0.5 h-8 rounded border border-border bg-background px-1.5">
+              {(["exit", "take_profit", "force_exit", "reduce"] as TransactionType[]).map(t => (
+                <option key={t} value={t}>{TX_LABELS[t]}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] text-muted-foreground">成交价</label>
+            <input type="number" value={price} onChange={e => setPrice(e.target.value)}
+              className="w-full mt-0.5 h-8 rounded border border-border bg-background px-1.5" />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted-foreground">股数</label>
+            <input type="number" value={shares} onChange={e => setShares(e.target.value)}
+              className="w-full mt-0.5 h-8 rounded border border-border bg-background px-1.5" />
+          </div>
+          <div>
+            <label className="text-[10px] text-muted-foreground">成交金额</label>
+            <div className="mt-0.5 h-8 flex items-center px-1.5 text-xs text-muted-foreground border border-border/50 rounded bg-secondary/30">
+              ¥{((parseFloat(price) || 0) * (parseFloat(shares) || 0)).toLocaleString("zh-CN", { maximumFractionDigits: 0 })}
+            </div>
+          </div>
+        </div>
+        <div>
+          <label className="text-[10px] text-muted-foreground">备注（可选）</label>
+          <input type="text" placeholder="如：跟踪止盈触发" value={notes} onChange={e => setNotes(e.target.value)}
+            className="w-full mt-0.5 h-8 rounded border border-border bg-background text-xs px-1.5" />
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={() => onConfirm(type, parseFloat(price) || defaultPrice, parseFloat(shares) || defaultShares, notes)}
+            className="flex-1 h-8 rounded bg-primary text-primary-foreground text-xs font-medium"
+          >
+            记录并移除
+          </button>
+          <button onClick={onSkip} className="px-3 h-8 rounded border border-border text-xs text-muted-foreground">
+            不记录
+          </button>
+          <button onClick={onCancel} className="px-3 h-8 rounded border border-border text-xs text-muted-foreground">
+            取消
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
