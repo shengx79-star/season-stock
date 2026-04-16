@@ -550,7 +550,7 @@ const Portfolio = () => {
                       <div className="text-[11px] text-muted-foreground">
                         目标 {formatMoney(pos.finalTargetValue)}
                       </div>
-                      {pos.trendBucketValue > 0 && (
+                      {pos.trendBucketValue > 0 && pos.stage === "summer" && (
                         <div className="text-[10px] text-[hsl(var(--summer))] font-medium mt-0.5">
                           趋势 +{formatMoney(pos.trendBucketValue)}
                         </div>
