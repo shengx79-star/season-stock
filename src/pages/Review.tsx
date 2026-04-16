@@ -345,12 +345,11 @@ const Review = () => {
         <div className="border-b border-border bg-amber-500/5 px-4 md:px-6 py-3">
           <div className="max-w-4xl space-y-2">
             {suggestions.map((s, i) => (
-              <div key={i} className="flex items-start gap-3 text-sm">
-                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <div key={i} className="flex items-start gap-2 text-xs md:text-sm">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-medium text-amber-700">{s.title}</span>
-                  <span className="text-muted-foreground ml-2">{s.detail}</span>
-                  <span className="text-xs text-muted-foreground/60 ml-2">(样本 {s.sampleCount} 条)</span>
+                  <span className="text-muted-foreground ml-1 md:ml-2">{s.detail}</span>
                 </div>
               </div>
             ))}
