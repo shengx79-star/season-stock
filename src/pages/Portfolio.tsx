@@ -216,37 +216,35 @@ const Portfolio = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="border-b border-border px-4 md:px-6 py-3 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 md:gap-6 min-w-0">
-            {mobileShowDetail && selectedSymbol ? (
-              <button onClick={() => setMobileShowDetail(false)} className="md:hidden p-1 -ml-1 rounded hover:bg-secondary">
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-            ) : null}
-            <span className="text-xl md:text-2xl font-bold tracking-tight">
-              <span className="text-[hsl(var(--spring))]">股</span>
-              <span className="text-destructive">票</span>
-              <span className="text-[hsl(var(--autumn))]">四</span>
-              <span className="text-primary">季</span>
-            </span>
-            <AppNav />
-          </div>
+      <header className="border-b border-border px-3 md:px-6 py-2 md:py-3 shrink-0">
+        <div className="flex items-center gap-2 md:gap-6 min-w-0">
+          {mobileShowDetail && selectedSymbol ? (
+            <button onClick={() => setMobileShowDetail(false)} className="md:hidden p-1 -ml-1 rounded hover:bg-secondary">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+          ) : null}
+          <span className="text-lg md:text-2xl font-bold tracking-tight shrink-0">
+            <span className="text-[hsl(var(--spring))]">股</span>
+            <span className="text-destructive">票</span>
+            <span className="text-[hsl(var(--autumn))]">四</span>
+            <span className="text-primary">季</span>
+          </span>
+          <AppNav />
           <button
             onClick={() => {
               if (config) { setEditTotalAssets(config.totalAssets.toString()); setEditQuotaPct(config.defaultQuotaPct.toString()); }
               setShowConfig(!showConfig);
             }}
-            className="p-2 rounded-lg hover:bg-secondary transition-colors"
+            className="p-1.5 md:p-2 rounded-lg hover:bg-secondary transition-colors ml-auto shrink-0"
           >
-            <Settings className="w-5 h-5 text-muted-foreground" />
+            <Settings className="w-4 h-4 md:w-5 md:h-5 text-muted-foreground" />
           </button>
         </div>
       </header>
 
       {/* Config panel */}
       {showConfig && config && (
-        <div className="border-b border-border px-6 py-4 bg-card">
+        <div className="border-b border-border px-3 md:px-6 py-3 md:py-4 bg-card">
           <div className="max-w-xl mx-auto">
             <h3 className="font-semibold text-sm mb-3">组合配置</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -277,34 +275,31 @@ const Portfolio = () => {
         }`}>
           {/* Market summary bar */}
           {portfolio && (
-            <div className="p-3 border-b border-border bg-card">
-              <div className="flex items-center justify-between mb-2">
+            <div className="px-2.5 md:p-3 py-2.5 border-b border-border bg-card">
+              <div className="flex items-center justify-between mb-1.5 md:mb-2 flex-wrap gap-1">
                 <span className="text-xs font-medium flex items-center gap-1">
                   <TrendingUp className="w-3 h-3" /> {regimeLabels[portfolio.market.regime]}
                 </span>
-                <div className="flex items-center gap-2">
-                  {/* 实时行情状态 */}
-                  <div className="flex items-center gap-1">
-                    <span className={`flex items-center gap-1 text-[10px] font-medium ${isMarketOpen ? "text-green-500" : "text-muted-foreground"}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${isMarketOpen ? "bg-green-500 animate-pulse" : "bg-muted-foreground"}`} />
-                      {isMarketOpen ? "盘中" : "已收盘"}
-                    </span>
-                    {liveUpdatedAt && (
-                      <span className="text-[10px] text-muted-foreground/60">{formatBJTime(liveUpdatedAt)}</span>
-                    )}
-                    <button onClick={refreshLive} className="p-0.5 hover:text-foreground text-muted-foreground/60 transition-colors" title="手动刷新">
-                      <RefreshCw className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <span className={`text-sm font-bold flex items-center gap-1 ${
-                  portfolio.market.temperature > 60 ? "text-[hsl(var(--summer))]"
-                  : portfolio.market.temperature > 40 ? "text-[hsl(var(--autumn))]"
-                  : portfolio.market.temperature > 20 ? "text-[hsl(var(--spring))]"
-                  : "text-primary"
-                }`}>
-                  <span className="text-xs font-normal text-muted-foreground">市场热度</span>
-                  {Math.round(portfolio.market.temperature)}°
-                </span>
+                <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
+                  <span className={`flex items-center gap-1 text-[10px] font-medium ${isMarketOpen ? "text-green-500" : "text-muted-foreground"}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${isMarketOpen ? "bg-green-500 animate-pulse" : "bg-muted-foreground"}`} />
+                    {isMarketOpen ? "盘中" : "收盘"}
+                  </span>
+                  {liveUpdatedAt && (
+                    <span className="text-[10px] text-muted-foreground/60">{formatBJTime(liveUpdatedAt)}</span>
+                  )}
+                  <button onClick={refreshLive} className="p-0.5 hover:text-foreground text-muted-foreground/60 transition-colors" title="刷新">
+                    <RefreshCw className="w-3 h-3" />
+                  </button>
+                  <span className={`text-xs md:text-sm font-bold flex items-center gap-0.5 ${
+                    portfolio.market.temperature > 60 ? "text-[hsl(var(--summer))]"
+                    : portfolio.market.temperature > 40 ? "text-[hsl(var(--autumn))]"
+                    : portfolio.market.temperature > 20 ? "text-[hsl(var(--spring))]"
+                    : "text-primary"
+                  }`}>
+                    <span className="text-[10px] md:text-xs font-normal text-muted-foreground">热度</span>
+                    {Math.round(portfolio.market.temperature)}°
+                  </span>
                 </div>
               </div>
               <div className="flex gap-1 text-[10px] flex-wrap mb-2">
@@ -662,34 +657,34 @@ function LayerStep({
   return (
     <div className="relative">
       {/* Connector line */}
-      <div className="absolute left-5 top-10 bottom-0 w-px bg-border" />
+      <div className="absolute left-3.5 md:left-5 top-8 md:top-10 bottom-0 w-px bg-border" />
 
       <div className="relative">
         {/* Layer number badge */}
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center shrink-0 z-10 bg-background">
-            <span className="text-xs font-bold text-primary">{layerNum}</span>
+        <div className="flex items-start gap-2 md:gap-3">
+          <div className="w-7 h-7 md:w-10 md:h-10 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center shrink-0 z-10 bg-background">
+            <span className="text-[10px] md:text-xs font-bold text-primary">{layerNum}</span>
           </div>
           <div className="flex-1 min-w-0">
             <button
               onClick={() => setOpen(!open)}
-              className="w-full text-left flex items-center justify-between group"
+              className="w-full text-left flex items-center justify-between group gap-1"
             >
-              <div>
-                <h3 className="text-sm font-semibold">{title}</h3>
-                {subtitle && <p className="text-[11px] text-muted-foreground">{subtitle}</p>}
+              <div className="min-w-0">
+                <h3 className="text-xs md:text-sm font-semibold">{title}</h3>
+                {subtitle && <p className="text-[10px] md:text-[11px] text-muted-foreground leading-snug">{subtitle}</p>}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 md:gap-2 shrink-0">
                 <div className="text-right">
-                  <div className="text-[10px] text-muted-foreground">{outputLabel}</div>
-                  <div className={`text-sm font-bold ${outputColor || ""}`}>{outputValue}</div>
+                  <div className="text-[9px] md:text-[10px] text-muted-foreground">{outputLabel}</div>
+                  <div className={`text-xs md:text-sm font-bold ${outputColor || ""}`}>{outputValue}</div>
                 </div>
-                {open ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                {open ? <ChevronDown className="w-3.5 h-3.5 md:w-4 md:h-4 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 md:w-4 md:h-4 text-muted-foreground" />}
               </div>
             </button>
 
             {open && (
-              <div className="mt-2 mb-1 rounded-lg bg-secondary/40 border border-border/50 p-3">
+              <div className="mt-2 mb-1 rounded-lg bg-secondary/40 border border-border/50 p-2 md:p-3">
                 {children}
               </div>
             )}
@@ -768,28 +763,28 @@ function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, 
   const isExitScenario = pos.action === "reduce" || pos.action === "exit_autumn" || pos.action === "force_exit" || pos.action === "take_profit";
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-2xl">
+    <div className="p-3 md:p-6 space-y-3 md:space-y-4 max-w-2xl">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold">{pos.name}</h2>
-            <span className="text-sm text-muted-foreground">{pos.symbol}</span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 md:gap-3 flex-wrap">
+            <h2 className="text-lg md:text-xl font-bold">{pos.name}</h2>
+            <span className="text-xs md:text-sm text-muted-foreground">{pos.symbol}</span>
             {pos.stage !== "unknown" && (
-              <span className="text-sm">{seasonEmojis[pos.stage]} {seasonLabels[pos.stage]}</span>
+              <span className="text-xs md:text-sm">{seasonEmojis[pos.stage]} {seasonLabels[pos.stage]}</span>
             )}
           </div>
-          <div className="flex items-center gap-2 mt-2">
-            <span className={`px-2.5 py-1 rounded text-xs font-semibold ${actionColors[pos.action]}`}>
+          <div className="flex items-center gap-2 mt-1.5">
+            <span className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded text-[11px] md:text-xs font-semibold ${actionColors[pos.action]}`}>
               {actionLabels[pos.action]}
             </span>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-2xl font-bold">¥{pos.currentPrice.toFixed(2)}</div>
+        <div className="text-right shrink-0">
+          <div className="text-xl md:text-2xl font-bold">¥{pos.currentPrice.toFixed(2)}</div>
           {pos.costBasis > 0 && (
-            <div className={`text-sm font-medium ${pos.pnlPct > 0 ? "text-[hsl(var(--summer))]" : pos.pnlPct < 0 ? "text-destructive" : "text-muted-foreground"}`}>
-              {"\n"}
+            <div className={`text-xs md:text-sm font-medium ${pos.pnlPct > 0 ? "text-[hsl(var(--summer))]" : pos.pnlPct < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+              {pos.pnlPct > 0 ? "+" : ""}{pos.pnlPct.toFixed(2)}%
             </div>
           )}
         </div>
