@@ -292,53 +292,51 @@ const Review = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="border-b border-border px-4 md:px-6 py-3 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 md:gap-6">
-            <span className="text-xl md:text-2xl font-bold tracking-tight">
-              <span className="text-[hsl(var(--spring))]">股</span>
-              <span className="text-destructive">票</span>
-              <span className="text-[hsl(var(--autumn))]">四</span>
-              <span className="text-primary">季</span>
-            </span>
-            <AppNav />
-          </div>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            {/* Eval period toggle */}
-            <div className="flex items-center gap-1 text-xs">
-              <span className="text-muted-foreground mr-1">评估周期</span>
-              {([1, 3, 5] as const).map(d => (
-                <button
-                  key={d}
-                  onClick={() => setEvalDays(d)}
-                  className={`px-2 py-0.5 rounded transition-colors ${evalDays === d
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {d}日
-                </button>
-              ))}
-            </div>
-            {overallAccuracy && (
-              <span>
-                综合准确率{" "}
-                <span className={`font-bold ${overallAccuracy.pct >= 60 ? "text-green-500" : overallAccuracy.pct >= 45 ? "text-[hsl(var(--autumn))]" : "text-red-500"}`}>
-                  {overallAccuracy.pct.toFixed(0)}%
-                </span>
-                <span className="text-xs ml-1">({overallAccuracy.total}条)</span>
-              </span>
-            )}
-            {suggestions.length > 0 && (
+      <header className="border-b border-border px-3 md:px-6 py-2 md:py-3 shrink-0">
+        <div className="flex items-center gap-2 md:gap-6">
+          <span className="text-lg md:text-2xl font-bold tracking-tight shrink-0">
+            <span className="text-[hsl(var(--spring))]">股</span>
+            <span className="text-destructive">票</span>
+            <span className="text-[hsl(var(--autumn))]">四</span>
+            <span className="text-primary">季</span>
+          </span>
+          <AppNav />
+        </div>
+        {/* Second row: eval period + accuracy */}
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs">
+          <div className="flex items-center gap-1">
+            <span className="text-muted-foreground">周期</span>
+            {([1, 3, 5] as const).map(d => (
               <button
-                onClick={() => setShowSuggestions(!showSuggestions)}
-                className="flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/10 text-amber-600 text-xs font-medium hover:bg-amber-500/20"
+                key={d}
+                onClick={() => setEvalDays(d)}
+                className={`px-2 py-0.5 rounded transition-colors ${evalDays === d
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground hover:text-foreground"
+                }`}
               >
-                <AlertTriangle className="w-3 h-3" />
-                参数建议 {suggestions.length} 条
+                {d}日
               </button>
-            )}
+            ))}
           </div>
+          {overallAccuracy && (
+            <span className="text-muted-foreground">
+              准确率{" "}
+              <span className={`font-bold ${overallAccuracy.pct >= 60 ? "text-green-500" : overallAccuracy.pct >= 45 ? "text-[hsl(var(--autumn))]" : "text-red-500"}`}>
+                {overallAccuracy.pct.toFixed(0)}%
+              </span>
+              <span className="ml-0.5">({overallAccuracy.total})</span>
+            </span>
+          )}
+          {suggestions.length > 0 && (
+            <button
+              onClick={() => setShowSuggestions(!showSuggestions)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium hover:bg-amber-500/20"
+            >
+              <AlertTriangle className="w-3 h-3" />
+              建议{suggestions.length}条
+            </button>
+          )}
         </div>
       </header>
 
@@ -347,12 +345,11 @@ const Review = () => {
         <div className="border-b border-border bg-amber-500/5 px-4 md:px-6 py-3">
           <div className="max-w-4xl space-y-2">
             {suggestions.map((s, i) => (
-              <div key={i} className="flex items-start gap-3 text-sm">
-                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <div key={i} className="flex items-start gap-2 text-xs md:text-sm">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                 <div>
                   <span className="font-medium text-amber-700">{s.title}</span>
-                  <span className="text-muted-foreground ml-2">{s.detail}</span>
-                  <span className="text-xs text-muted-foreground/60 ml-2">(样本 {s.sampleCount} 条)</span>
+                  <span className="text-muted-foreground ml-1 md:ml-2">{s.detail}</span>
                 </div>
               </div>
             ))}
@@ -366,9 +363,9 @@ const Review = () => {
           <p className="text-xs">打开仓位管理页面后会自动记录今日快照</p>
         </div>
       ) : (
-        <div className="flex-1 flex overflow-hidden">
-          {/* Left: date list */}
-          <div className="w-36 md:w-44 shrink-0 border-r border-border overflow-y-auto">
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+          {/* Left: date list — horizontal scroll on mobile, vertical sidebar on desktop */}
+          <div className="md:w-44 shrink-0 border-b md:border-b-0 md:border-r border-border overflow-x-auto md:overflow-y-auto flex md:flex-col">
             {dateGroups.map(([date, items]) => {
               const evaluated = items.filter(o => o.status === "correct" || o.status === "wrong");
               const correct = evaluated.filter(o => o.status === "correct").length;
@@ -379,19 +376,19 @@ const Review = () => {
                 <button
                   key={date}
                   onClick={() => setSelectedDate(date)}
-                  className={`w-full px-3 py-3 text-left border-b border-border transition-colors ${
-                    selectedDate === date ? "bg-primary/5 border-l-2 border-l-primary" : "hover:bg-secondary/50"
+                  className={`shrink-0 px-3 py-2 md:py-3 text-left border-r md:border-r-0 md:border-b border-border transition-colors whitespace-nowrap ${
+                    selectedDate === date ? "bg-primary/5 md:border-l-2 md:border-l-primary border-b-2 md:border-b-0 border-b-primary" : "hover:bg-secondary/50"
                   }`}
                 >
                   <div className="text-xs font-medium text-foreground">
-                    {date.slice(5)} {isToday && <span className="text-[10px] text-muted-foreground">(今日)</span>}
+                    {date.slice(5)} {isToday && <span className="text-[10px] text-muted-foreground">(今)</span>}
                   </div>
                   <div className="text-[10px] mt-0.5">
                     {isPending ? (
-                      <span className="text-muted-foreground/60">待验证</span>
+                      <span className="text-muted-foreground/60">待验</span>
                     ) : (
                       <span className={pct! >= 60 ? "text-green-500" : pct! >= 45 ? "text-[hsl(var(--autumn))]" : "text-red-500"}>
-                        {pct!.toFixed(0)}% · {items.length}只
+                        {pct!.toFixed(0)}%·{items.length}只
                       </span>
                     )}
                   </div>
@@ -444,7 +441,7 @@ const Review = () => {
                 {confStats.length > 0 && (
                   <div className="rounded-lg border border-border bg-secondary/20 p-4">
                     <div className="text-xs font-medium text-muted-foreground mb-3">置信度分布</div>
-                    <div className="grid grid-cols-[60px_1fr_56px_56px] gap-x-2 gap-y-1 text-[10px]">
+                    <div className="grid grid-cols-[50px_1fr_48px_36px] md:grid-cols-[60px_1fr_56px_56px] gap-x-1.5 md:gap-x-2 gap-y-1 text-[10px]">
                       <span className="text-muted-foreground">区间</span>
                       <span className="text-muted-foreground">胜率</span>
                       <span className="text-muted-foreground text-right">均收益</span>
@@ -480,17 +477,17 @@ const Review = () => {
             {selectedDate && selectedOutcomes.length > 0 ? (
               <div className="max-w-3xl space-y-4">
                 {/* Date header */}
-                <div className="flex items-center gap-3">
-                  <h2 className="text-base font-semibold">{selectedDate} 的引擎判断</h2>
-                  <span className="text-xs text-muted-foreground">{selectedOutcomes.length} 只持仓</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-sm md:text-base font-semibold">{selectedDate}</h2>
+                  <span className="text-xs text-muted-foreground">{selectedOutcomes.length}只</span>
                   {(() => {
                     const ev = selectedOutcomes.filter(o => o.status === "correct" || o.status === "wrong");
-                    if (ev.length === 0) return <span className="text-xs text-muted-foreground">待 {evalDays} 个交易日后验证</span>;
+                    if (ev.length === 0) return <span className="text-[10px] text-muted-foreground">待{evalDays}日验证</span>;
                     const c = ev.filter(o => o.status === "correct").length;
                     const p = c / ev.length * 100;
                     return (
                       <span className={`text-sm font-bold ${p >= 60 ? "text-green-500" : p >= 45 ? "text-[hsl(var(--autumn))]" : "text-red-500"}`}>
-                        准确率 {p.toFixed(0)}%
+                        {p.toFixed(0)}%
                       </span>
                     );
                   })()}
@@ -505,11 +502,11 @@ const Review = () => {
                 )}
 
                 {/* Table header */}
-                <div className="grid grid-cols-[1fr_80px_72px_72px_56px_56px] gap-2 text-[10px] text-muted-foreground px-1">
+                <div className="grid grid-cols-[1fr_48px_40px_32px] md:grid-cols-[1fr_80px_72px_72px_56px_56px] gap-1 md:gap-2 text-[10px] text-muted-foreground px-1">
                   <span>股票</span>
-                  <span className="text-right">当时价</span>
-                  <span className="text-right">置信度</span>
-                  <span className="text-right">{evalDays}日后%</span>
+                  <span className="text-right hidden md:block">当时价</span>
+                  <span className="text-right hidden md:block">置信度</span>
+                  <span className="text-right">{evalDays}日%</span>
                   <span className="text-center">止损</span>
                   <span className="text-center">结果</span>
                 </div>
@@ -603,7 +600,7 @@ function SnapshotRow({ outcome, evalDays }: { outcome: SnapshotOutcome; evalDays
     <div className={`rounded-lg border border-border ${rowBg}`}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full grid grid-cols-[1fr_80px_72px_72px_56px_56px] gap-2 items-center px-3 py-2.5 text-left"
+        className="w-full grid grid-cols-[1fr_48px_40px_32px] md:grid-cols-[1fr_80px_72px_72px_56px_56px] gap-1 md:gap-2 items-center px-2 md:px-3 py-2 md:py-2.5 text-left"
       >
         {/* Name + action */}
         <div className="min-w-0">
@@ -617,10 +614,10 @@ function SnapshotRow({ outcome, evalDays }: { outcome: SnapshotOutcome; evalDays
           <div className="text-[10px] text-muted-foreground mt-0.5">{s.symbol}</div>
           <div className="text-[10px] text-muted-foreground/70 mt-0.5 italic leading-snug">{analysis}</div>
         </div>
-        {/* Current price at snapshot */}
-        <span className="text-xs text-right">¥{s.currentPrice.toFixed(2)}</span>
-        {/* Confidence */}
-        <span className="text-xs text-right text-muted-foreground">{(s.confidence * 100).toFixed(0)}%</span>
+        {/* Current price at snapshot — hidden on mobile */}
+        <span className="text-xs text-right hidden md:block">¥{s.currentPrice.toFixed(2)}</span>
+        {/* Confidence — hidden on mobile */}
+        <span className="text-xs text-right text-muted-foreground hidden md:block">{(s.confidence * 100).toFixed(0)}%</span>
         {/* Price change */}
         <span className={`text-xs text-right font-medium ${
           priceChangePct == null ? "text-muted-foreground/50"
