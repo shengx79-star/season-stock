@@ -657,34 +657,34 @@ function LayerStep({
   return (
     <div className="relative">
       {/* Connector line */}
-      <div className="absolute left-5 top-10 bottom-0 w-px bg-border" />
+      <div className="absolute left-3.5 md:left-5 top-8 md:top-10 bottom-0 w-px bg-border" />
 
       <div className="relative">
         {/* Layer number badge */}
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center shrink-0 z-10 bg-background">
-            <span className="text-xs font-bold text-primary">{layerNum}</span>
+        <div className="flex items-start gap-2 md:gap-3">
+          <div className="w-7 h-7 md:w-10 md:h-10 rounded-full bg-primary/10 border-2 border-primary flex items-center justify-center shrink-0 z-10 bg-background">
+            <span className="text-[10px] md:text-xs font-bold text-primary">{layerNum}</span>
           </div>
           <div className="flex-1 min-w-0">
             <button
               onClick={() => setOpen(!open)}
-              className="w-full text-left flex items-center justify-between group"
+              className="w-full text-left flex items-center justify-between group gap-1"
             >
-              <div>
-                <h3 className="text-sm font-semibold">{title}</h3>
-                {subtitle && <p className="text-[11px] text-muted-foreground">{subtitle}</p>}
+              <div className="min-w-0">
+                <h3 className="text-xs md:text-sm font-semibold">{title}</h3>
+                {subtitle && <p className="text-[10px] md:text-[11px] text-muted-foreground leading-snug">{subtitle}</p>}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 md:gap-2 shrink-0">
                 <div className="text-right">
-                  <div className="text-[10px] text-muted-foreground">{outputLabel}</div>
-                  <div className={`text-sm font-bold ${outputColor || ""}`}>{outputValue}</div>
+                  <div className="text-[9px] md:text-[10px] text-muted-foreground">{outputLabel}</div>
+                  <div className={`text-xs md:text-sm font-bold ${outputColor || ""}`}>{outputValue}</div>
                 </div>
-                {open ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                {open ? <ChevronDown className="w-3.5 h-3.5 md:w-4 md:h-4 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 md:w-4 md:h-4 text-muted-foreground" />}
               </div>
             </button>
 
             {open && (
-              <div className="mt-2 mb-1 rounded-lg bg-secondary/40 border border-border/50 p-3">
+              <div className="mt-2 mb-1 rounded-lg bg-secondary/40 border border-border/50 p-2 md:p-3">
                 {children}
               </div>
             )}
