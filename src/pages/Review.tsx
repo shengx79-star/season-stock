@@ -407,7 +407,10 @@ const Review = () => {
                 {/* Season win rate bars */}
                 {seasonStats.length > 0 && (
                   <div className="rounded-lg border border-border bg-secondary/20 p-4 space-y-2">
-                    <div className="text-xs font-medium text-muted-foreground mb-3">按季节胜率</div>
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-muted-foreground">按季节胜率</div>
+                      <div className="text-[10px] text-muted-foreground/70 mt-0.5">统计各季节下操作「正确」的比例及平均收益，样本越多越可靠</div>
+                    </div>
                     {seasonStats.map(s => {
                       const label = s.stage === "spring" ? "春" : s.stage === "summer" ? "夏" : s.stage === "autumn" ? "秋" : "冬";
                       const color = s.stage === "spring" ? "hsl(var(--spring))" : s.stage === "summer" ? "hsl(var(--summer))" : s.stage === "autumn" ? "hsl(var(--autumn))" : "hsl(var(--winter))";
@@ -440,7 +443,10 @@ const Review = () => {
                 {/* Confidence band table */}
                 {confStats.length > 0 && (
                   <div className="rounded-lg border border-border bg-secondary/20 p-4">
-                    <div className="text-xs font-medium text-muted-foreground mb-3">置信度分布</div>
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-muted-foreground">置信度分布</div>
+                      <div className="text-[10px] text-muted-foreground/70 mt-0.5">按分类器置信度区间分组，高置信度时胜率与收益是否更稳定</div>
+                    </div>
                     <div className="grid grid-cols-[50px_1fr_48px_36px] md:grid-cols-[60px_1fr_56px_56px] gap-x-1.5 md:gap-x-2 gap-y-1 text-[10px]">
                       <span className="text-muted-foreground">区间</span>
                       <span className="text-muted-foreground">胜率</span>
