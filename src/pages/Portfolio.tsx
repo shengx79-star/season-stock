@@ -611,6 +611,7 @@ const Portfolio = () => {
               pos={selectedPos}
               posForm={posForm}
               totalAssets={config?.totalAssets ?? 0}
+              defaultQuotaPct={config?.defaultQuotaPct ?? 10}
               market={portfolio?.market ?? null}
               onSave={() => handleSavePosition(selectedPos.symbol)}
               onFormChange={setPosForm}
@@ -729,13 +730,14 @@ interface DetailPanelProps {
   pos: StockPositionResult;
   posForm: { positionValue: string; costBasis: string; shares: string; quotaValue: string };
   totalAssets: number;
+  defaultQuotaPct: number;
   market: MarketContext | null;
   onSave: () => void;
   onFormChange: (form: { positionValue: string; costBasis: string; shares: string; quotaValue: string }) => void;
   onRemoveFromPortfolio: () => void;
 }
 
-function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, onRemoveFromPortfolio }: DetailPanelProps) {
+function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSave, onFormChange, onRemoveFromPortfolio }: DetailPanelProps) {
   const quota = pos.effectiveQuota > 0 ? pos.effectiveQuota : totalAssets;
   const positionPct = quota > 0 ? (pos.currentPositionValue / quota * 100) : 0;
   const targetPct   = quota > 0 ? (pos.finalTargetValue   / quota * 100) : 0;
@@ -760,7 +762,7 @@ function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, 
   const setupFactor = setupFactorByScore[setupScore] ?? 1.0;
 
   // P2: 有效配额来源判断（无上限，直接用自定义或默认配额）
-  const computedDefaultQuota = config ? config.totalAssets * config.defaultQuotaPct / 100 : 100000;
+  const computedDefaultQuota = totalAssets * defaultQuotaPct / 100;
   const quotaIsDefault = Math.abs(pos.effectiveQuota - computedDefaultQuota) < 1;
 
   // P3: 是否为减仓/退出场景
@@ -839,7 +841,7 @@ function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, 
                 <div className="text-xs text-muted-foreground mb-1">配额</div>
                 <input type="number" value={posForm.quotaValue}
                   onChange={(e) => onFormChange({ ...posForm, quotaValue: e.target.value })}
-                  placeholder={`默认${config ? Math.round(config.totalAssets * config.defaultQuotaPct / 100 / 10000) : 10}万`}
+                  placeholder={`默认${Math.round(totalAssets * defaultQuotaPct / 100 / 10000)}万`}
                   className={inputCls + " placeholder:text-muted-foreground/50 placeholder:text-[10px]"} />
               </div>
             </div>
