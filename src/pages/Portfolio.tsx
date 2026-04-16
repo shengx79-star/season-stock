@@ -632,6 +632,12 @@ const Portfolio = () => {
                   shares: positions.find(p => p.symbol === selectedPos.symbol)?.shares ?? 0,
                 });
               }}
+              onLoggedExit={async () => {
+                await togglePortfolio(selectedPos.symbol, false);
+                removePosition(selectedPos.symbol);
+                setSelectedSymbol(null);
+                setMobileShowDetail(false);
+              }}
             />
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -781,9 +787,10 @@ interface DetailPanelProps {
   onSave: () => void;
   onFormChange: (form: { positionValue: string; costBasis: string; shares: string; quotaValue: string }) => void;
   onRemoveFromPortfolio: () => void;
+  onLoggedExit: () => Promise<void>;  // remove position directly (already logged)
 }
 
-function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSave, onFormChange, onRemoveFromPortfolio }: DetailPanelProps) {
+function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSave, onFormChange, onRemoveFromPortfolio, onLoggedExit }: DetailPanelProps) {
   const { addTransaction, getBySymbol, deleteTransaction } = useTransactions();
   const [txList, setTxList] = useState<import("@/hooks/useTransactions").Transaction[]>([]);
   const [showTxForm, setShowTxForm] = useState(false);
@@ -792,6 +799,8 @@ function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSav
   useEffect(() => {
     getBySymbol(pos.symbol).then(setTxList);
   }, [pos.symbol, getBySymbol]);
+
+  const EXIT_TYPES: TransactionType[] = ["exit", "take_profit", "force_exit"];
 
   const handleAddTx = async () => {
     const price = parseFloat(txForm.price);
@@ -804,6 +813,12 @@ function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSav
     });
     setTxForm({ type: "buy", price: "", shares: "", date: new Date().toISOString().slice(0, 10), notes: "" });
     setShowTxForm(false);
+    // Exit types: automatically remove position after logging
+    if (EXIT_TYPES.includes(txForm.type)) {
+      toast.success("交易已记录，持仓已移除");
+      await onLoggedExit();
+      return;
+    }
     const updated = await getBySymbol(pos.symbol);
     setTxList(updated);
     toast.success("交易已记录");
