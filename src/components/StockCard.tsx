@@ -32,14 +32,14 @@ export const StockCard = ({ stock, classification, dailyBars, liveQuote, onClick
 
   return (
     <div className="stock-card relative group" onClick={() => onClick(stock)}>
-      <div className="absolute -top-1 -right-1 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute -top-1 -right-1 z-10 flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
         {onTogglePortfolio && (
           <button
             onClick={(e) => { e.stopPropagation(); onTogglePortfolio(stock.symbol, !inPortfolio); }}
             className={`p-1 rounded-full transition-colors ${inPortfolio ? "bg-primary/20 text-primary" : "bg-secondary hover:bg-secondary/80 text-muted-foreground"}`}
             title={inPortfolio ? "移出仓位管理" : "纳入仓位管理"}
           >
-            <Briefcase className="w-3.5 h-3.5" />
+            <Briefcase className="w-3 h-3 md:w-3.5 md:h-3.5" />
           </button>
         )}
         {onDelete && (
@@ -48,7 +48,7 @@ export const StockCard = ({ stock, classification, dailyBars, liveQuote, onClick
             className="p-1 rounded-full bg-destructive/10 hover:bg-destructive/20 text-destructive"
             title="删除"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-3 h-3 md:w-3.5 md:h-3.5" />
           </button>
         )}
       </div>
@@ -58,13 +58,13 @@ export const StockCard = ({ stock, classification, dailyBars, liveQuote, onClick
           <span className="text-[10px] font-medium">持仓</span>
         </div>
       )}
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex items-start justify-between mb-2 md:mb-3">
         <div>
-          <h3 className="text-lg font-medium text-foreground flex items-center gap-1.5">
+          <h3 className="text-base md:text-lg font-medium text-foreground flex items-center gap-1.5">
             {stock.symbol}
             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${marketColor}`}>{marketLabel}</span>
           </h3>
-          <p className="text-sm text-muted-foreground">{stock.name}</p>
+          <p className="text-xs md:text-sm text-muted-foreground">{stock.name}</p>
         </div>
         <SeasonBadge
           season={season}
@@ -75,26 +75,26 @@ export const StockCard = ({ stock, classification, dailyBars, liveQuote, onClick
       </div>
 
       {dailyBars && dailyBars.length > 2 && (
-        <MiniKlineChart dailyBars={dailyBars} season={season} bars={30} height={48} className="mb-2 -mx-1" />
+        <MiniKlineChart dailyBars={dailyBars} season={season} bars={30} height={40} className="mb-1.5 md:mb-2 -mx-1" />
       )}
 
       {classification && (
-        <div className="mb-3">
+        <div className="mb-2 md:mb-3">
           <SeasonScoreBar score={seasonScore} />
         </div>
       )}
 
       <div className="flex items-end justify-between">
         <div>
-          <p className="text-2xl font-medium text-foreground">¥{livePrice.toFixed(2)}</p>
-          <div className={`flex items-center gap-1 mt-1 text-sm font-medium ${isUp ? "text-[hsl(var(--spring))]" : "text-destructive"}`}>
-            {isUp ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+          <p className="text-xl md:text-2xl font-medium text-foreground">¥{livePrice.toFixed(2)}</p>
+          <div className={`flex items-center gap-1 mt-0.5 text-xs md:text-sm font-medium ${isUp ? "text-[hsl(var(--spring))]" : "text-destructive"}`}>
+            {isUp ? <TrendingUp className="w-3.5 h-3.5 md:w-4 md:h-4" /> : <TrendingDown className="w-3.5 h-3.5 md:w-4 md:h-4" />}
             <span>{isUp ? "+" : ""}{liveChange.toFixed(2)}%</span>
           </div>
         </div>
-        <div className="text-right text-xs text-muted-foreground space-y-1">
+        <div className="text-right text-[10px] md:text-xs text-muted-foreground space-y-0.5 md:space-y-1">
           <p>市值 {stock.marketCap}</p>
-          <p>成交量 {liveQuote?.volume ?? stock.volume}</p>
+          <p>量 {liveQuote?.volume ?? stock.volume}</p>
         </div>
       </div>
 
@@ -104,7 +104,7 @@ export const StockCard = ({ stock, classification, dailyBars, liveQuote, onClick
       )}
 
       {classification && classification.stage !== "unknown" && (
-        <div className="mt-3 pt-3 border-t border-border flex justify-between text-xs text-muted-foreground">
+        <div className="mt-2 md:mt-3 pt-2 md:pt-3 border-t border-border flex justify-between text-[10px] md:text-xs text-muted-foreground">
           <span>置信度 <span className={`font-medium ${
             confidenceLevel === "high" ? "text-[hsl(var(--spring))]" :
             confidenceLevel === "medium" ? "text-[hsl(var(--autumn))]" : "text-destructive"
