@@ -937,18 +937,21 @@ function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSav
                 <div className="text-xs text-muted-foreground mb-1">成本价</div>
                 <input type="number" value={posForm.costBasis}
                   onChange={(e) => onFormChange({ ...posForm, costBasis: e.target.value })}
+                  onBlur={onSave}
                   className={inputCls} />
               </div>
               <div>
                 <div className="text-xs text-muted-foreground mb-1">持股数</div>
                 <input type="number" value={posForm.shares}
                   onChange={(e) => onFormChange({ ...posForm, shares: e.target.value })}
+                  onBlur={onSave}
                   className={inputCls} />
               </div>
               <div>
                 <div className="text-xs text-muted-foreground mb-1">配额</div>
                 <input type="number" value={posForm.quotaValue}
                   onChange={(e) => onFormChange({ ...posForm, quotaValue: e.target.value })}
+                  onBlur={onSave}
                   placeholder={`默认${Math.round(totalAssets * defaultQuotaPct / 100 / 10000)}万`}
                   className={inputCls + " placeholder:text-muted-foreground/50 placeholder:text-[10px]"} />
               </div>
@@ -959,12 +962,6 @@ function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSav
               <div className={pnlColor}>
                 {costBasis > 0 ? <>{isProfit ? "+" : ""}{pnlPct.toFixed(2)}% ({isProfit ? "+" : ""}{formatMoney(pnlAmount)})</> : "—"}
               </div>
-            </div>
-            <div className="flex justify-end pt-1">
-              <button onClick={onSave}
-                className="px-3 py-1 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90">
-                保存
-              </button>
             </div>
           </div>
         );
