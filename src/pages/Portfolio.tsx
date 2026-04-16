@@ -220,6 +220,7 @@ const Portfolio = () => {
   }
 
   return (
+    <>
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="border-b border-border px-3 md:px-6 py-2 md:py-3 shrink-0">
@@ -674,6 +675,7 @@ const Portfolio = () => {
         onCancel={() => setExitConfirm(null)}
       />
     )}
+    </>
   );
 };
 

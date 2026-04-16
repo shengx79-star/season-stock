@@ -53,6 +53,7 @@ export type Database = {
           final_target_value: number
           hard_stop_pct: number | null
           id: string
+          industry: string
           market_regime: string
           market_temperature: number
           name: string
@@ -61,6 +62,7 @@ export type Database = {
           snapshot_date: string
           stage: string
           symbol: string
+          theme_cluster: string
           trailing_stop_pct: number | null
           user_id: string | null
         }
@@ -75,6 +77,7 @@ export type Database = {
           final_target_value?: number
           hard_stop_pct?: number | null
           id?: string
+          industry?: string
           market_regime?: string
           market_temperature?: number
           name: string
@@ -83,6 +86,7 @@ export type Database = {
           snapshot_date: string
           stage: string
           symbol: string
+          theme_cluster?: string
           trailing_stop_pct?: number | null
           user_id?: string | null
         }
@@ -97,6 +101,7 @@ export type Database = {
           final_target_value?: number
           hard_stop_pct?: number | null
           id?: string
+          industry?: string
           market_regime?: string
           market_temperature?: number
           name?: string
@@ -105,6 +110,7 @@ export type Database = {
           snapshot_date?: string
           stage?: string
           symbol?: string
+          theme_cluster?: string
           trailing_stop_pct?: number | null
           user_id?: string | null
         }
@@ -230,6 +236,48 @@ export type Database = {
           symbol?: string
           user_id?: string | null
           volume?: string
+        }
+        Relationships: []
+      }
+      transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          name: string
+          notes: string
+          price: number
+          shares: number
+          symbol: string
+          tx_date: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string
+          price: number
+          shares: number
+          symbol: string
+          tx_date?: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string
+          price?: number
+          shares?: number
+          symbol?: string
+          tx_date?: string
+          type?: string
+          user_id?: string
         }
         Relationships: []
       }
