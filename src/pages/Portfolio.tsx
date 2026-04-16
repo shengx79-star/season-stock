@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useStockPool } from "@/hooks/useStockPool";
 import { usePortfolio } from "@/hooks/usePortfolio";
-import { useStockClassifications } from "@/hooks/useStockClassification";
+import { useStockClassifications, useStockClassification } from "@/hooks/useStockClassification";
 import { usePositionSnapshots } from "@/hooks/usePositionSnapshots";
 import { useRealtimePrices } from "@/hooks/useRealtimePrices";
 import { useTransactions, TX_LABELS, TX_COLORS, type TransactionType } from "@/hooks/useTransactions";
@@ -19,7 +19,8 @@ import {
 } from "@/lib/positionEngine";
 import { seasonLabels, seasonEmojis, type Season } from "@/lib/stockData";
 import { AppNav } from "@/components/AppNav";
-import { Settings, TrendingUp, Trash2, Loader2, DollarSign, Briefcase, ChevronLeft, ChevronDown, ChevronRight, RefreshCw, Plus, X } from "lucide-react";
+import { StockAnalysis } from "@/components/StockAnalysis";
+import { Settings, TrendingUp, Trash2, Loader2, DollarSign, Briefcase, ChevronLeft, ChevronDown, ChevronRight, RefreshCw, Plus, X, BarChart2 } from "lucide-react";
 import { toast } from "sonner";
 
 const actionLabels: Record<ActionType, string> = {
@@ -811,6 +812,16 @@ interface DetailPanelProps {
 }
 
 function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSave, onFormChange, onRemoveFromPortfolio, onLoggedExit, onTransactionSaved }: DetailPanelProps) {
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const validStages = ["spring", "summer", "autumn", "winter"] as const;
+  const stockForAnalysis = {
+    symbol: pos.symbol, name: pos.name, price: pos.currentPrice,
+    change: 0, changePercent: 0,
+    season: (validStages.includes(pos.stage as any) ? pos.stage : "winter") as import("@/lib/stockData").Season,
+    sector: "", pe: 0, marketCap: "", volume: "", inPortfolio: true,
+  };
+  const analysisData = useStockClassification(stockForAnalysis);
+
   const { addTransaction, getBySymbol, deleteTransaction } = useTransactions();
   const [txList, setTxList] = useState<import("@/hooks/useTransactions").Transaction[]>([]);
   const [showTxForm, setShowTxForm] = useState(false);
@@ -876,6 +887,24 @@ function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSav
   // P3: 是否为减仓/退出场景
   const isExitScenario = pos.action === "reduce" || pos.action === "exit_autumn" || pos.action === "force_exit" || pos.action === "take_profit";
 
+  if (showAnalysis) {
+    return (
+      <div className="p-3 md:p-6 max-w-2xl">
+        {analysisData.loading && (
+          <div className="mb-3 px-3 py-2 rounded-lg bg-secondary text-secondary-foreground text-xs text-center animate-pulse">
+            正在获取行情数据...
+          </div>
+        )}
+        <StockAnalysis
+          stock={stockForAnalysis}
+          classification={analysisData}
+          dailyBars={analysisData.dailyBars}
+          onBack={() => setShowAnalysis(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="p-3 md:p-6 space-y-3 md:space-y-4 max-w-2xl">
       {/* Header */}
@@ -892,6 +921,12 @@ function DetailPanel({ pos, posForm, totalAssets, defaultQuotaPct, market, onSav
             <span className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded text-[11px] md:text-xs font-semibold ${actionColors[pos.action]}`}>
               {actionLabels[pos.action]}
             </span>
+            <button
+              onClick={() => setShowAnalysis(true)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] bg-secondary hover:bg-secondary/80 text-muted-foreground"
+            >
+              <BarChart2 className="w-3 h-3" /> 四季分析
+            </button>
           </div>
         </div>
         <div className="text-right shrink-0">
