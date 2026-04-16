@@ -763,28 +763,28 @@ function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, 
   const isExitScenario = pos.action === "reduce" || pos.action === "exit_autumn" || pos.action === "force_exit" || pos.action === "take_profit";
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-2xl">
+    <div className="p-3 md:p-6 space-y-3 md:space-y-4 max-w-2xl">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold">{pos.name}</h2>
-            <span className="text-sm text-muted-foreground">{pos.symbol}</span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 md:gap-3 flex-wrap">
+            <h2 className="text-lg md:text-xl font-bold">{pos.name}</h2>
+            <span className="text-xs md:text-sm text-muted-foreground">{pos.symbol}</span>
             {pos.stage !== "unknown" && (
-              <span className="text-sm">{seasonEmojis[pos.stage]} {seasonLabels[pos.stage]}</span>
+              <span className="text-xs md:text-sm">{seasonEmojis[pos.stage]} {seasonLabels[pos.stage]}</span>
             )}
           </div>
-          <div className="flex items-center gap-2 mt-2">
-            <span className={`px-2.5 py-1 rounded text-xs font-semibold ${actionColors[pos.action]}`}>
+          <div className="flex items-center gap-2 mt-1.5">
+            <span className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded text-[11px] md:text-xs font-semibold ${actionColors[pos.action]}`}>
               {actionLabels[pos.action]}
             </span>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-2xl font-bold">¥{pos.currentPrice.toFixed(2)}</div>
+        <div className="text-right shrink-0">
+          <div className="text-xl md:text-2xl font-bold">¥{pos.currentPrice.toFixed(2)}</div>
           {pos.costBasis > 0 && (
-            <div className={`text-sm font-medium ${pos.pnlPct > 0 ? "text-[hsl(var(--summer))]" : pos.pnlPct < 0 ? "text-destructive" : "text-muted-foreground"}`}>
-              {"\n"}
+            <div className={`text-xs md:text-sm font-medium ${pos.pnlPct > 0 ? "text-[hsl(var(--summer))]" : pos.pnlPct < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+              {pos.pnlPct > 0 ? "+" : ""}{pos.pnlPct.toFixed(2)}%
             </div>
           )}
         </div>
