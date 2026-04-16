@@ -674,6 +674,7 @@ const Portfolio = () => {
         onCancel={() => setExitConfirm(null)}
       />
     )}
+    </>
   );
 };
 
