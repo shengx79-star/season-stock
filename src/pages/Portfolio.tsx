@@ -759,8 +759,9 @@ function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, 
   const setupScore = Math.min(5, Math.max(0, Math.round(pos.setupScore)));
   const setupFactor = setupFactorByScore[setupScore] ?? 1.0;
 
-  // P2: 有效配额来源判断（无上限，直接用自定义或默认10万）
-  const quotaIsDefault = Math.abs(pos.effectiveQuota - 100000) < 1;
+  // P2: 有效配额来源判断（无上限，直接用自定义或默认配额）
+  const computedDefaultQuota = config ? config.totalAssets * config.defaultQuotaPct / 100 : 100000;
+  const quotaIsDefault = Math.abs(pos.effectiveQuota - computedDefaultQuota) < 1;
 
   // P3: 是否为减仓/退出场景
   const isExitScenario = pos.action === "reduce" || pos.action === "exit_autumn" || pos.action === "force_exit" || pos.action === "take_profit";
@@ -838,7 +839,7 @@ function DetailPanel({ pos, posForm, totalAssets, market, onSave, onFormChange, 
                 <div className="text-xs text-muted-foreground mb-1">配额</div>
                 <input type="number" value={posForm.quotaValue}
                   onChange={(e) => onFormChange({ ...posForm, quotaValue: e.target.value })}
-                  placeholder="默认10万"
+                  placeholder={`默认${config ? Math.round(config.totalAssets * config.defaultQuotaPct / 100 / 10000) : 10}万`}
                   className={inputCls + " placeholder:text-muted-foreground/50 placeholder:text-[10px]"} />
               </div>
             </div>
