@@ -71,7 +71,7 @@ export const StockAnalysis = ({ stock, classification, dailyBars, onBack }: Stoc
       <div className="flex items-start justify-between mb-6">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-foreground">{stock.symbol}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">{stock.symbol}</h1>
             <SeasonBadge
               season={season}
               confidence={classification?.confidence}
@@ -81,7 +81,7 @@ export const StockAnalysis = ({ stock, classification, dailyBars, onBack }: Stoc
           <p className="text-muted-foreground mt-1">{stock.name} · {stock.sector}</p>
         </div>
         <div className="text-right">
-          <p className="text-3xl font-bold text-foreground">${stock.price.toFixed(2)}</p>
+          <p className="text-xl md:text-3xl font-bold text-foreground">${stock.price.toFixed(2)}</p>
           <p className={`text-sm font-medium mt-1 ${isUp ? "text-[hsl(var(--spring))]" : "text-destructive"}`}>
             {isUp ? "+" : ""}{stock.change.toFixed(2)} ({isUp ? "+" : ""}{stock.changePercent.toFixed(2)}%)
           </p>
@@ -118,24 +118,24 @@ export const StockAnalysis = ({ stock, classification, dailyBars, onBack }: Stoc
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        <div className="rounded-xl border border-border p-4">
+      <div className="grid grid-cols-3 gap-2 md:gap-4 mb-6 md:mb-8">
+        <div className="rounded-xl border border-border p-3 md:p-4">
           <div className="flex items-center gap-2 text-muted-foreground mb-2">
             <DollarSign className="w-4 h-4" /> <span className="text-xs">市值</span>
           </div>
-          <p className="text-lg font-medium text-foreground">{stock.marketCap}</p>
+          <p className="text-sm md:text-lg font-medium text-foreground">{stock.marketCap}</p>
         </div>
-        <div className="rounded-xl border border-border p-4">
+        <div className="rounded-xl border border-border p-3 md:p-4">
           <div className="flex items-center gap-2 text-muted-foreground mb-2">
             <BarChart3 className="w-4 h-4" /> <span className="text-xs">成交量</span>
           </div>
-          <p className="text-lg font-medium text-foreground">{stock.volume}</p>
+          <p className="text-sm md:text-lg font-medium text-foreground">{stock.volume}</p>
         </div>
-        <div className="rounded-xl border border-border p-4">
+        <div className="rounded-xl border border-border p-3 md:p-4">
           <div className="flex items-center gap-2 text-muted-foreground mb-2">
             <Activity className="w-4 h-4" /> <span className="text-xs">市盈率</span>
           </div>
-          <p className="text-lg font-medium text-foreground">{stock.pe > 0 ? stock.pe.toFixed(1) : "亏损"}</p>
+          <p className="text-sm md:text-lg font-medium text-foreground">{stock.pe > 0 ? stock.pe.toFixed(1) : "亏损"}</p>
         </div>
       </div>
 
