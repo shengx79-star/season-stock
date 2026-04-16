@@ -507,9 +507,10 @@ function getAction(
     return { action: "hold", priority: 5, notes: ["🍂 秋季，无持仓"] };
   }
 
-  // Reduce if over target — summer uses trend bucket (trailing stop manages exit)
+  // Reduce if over target — summer with profit uses trend bucket (trailing stop manages exit)
   if (currentValue > targetValue && Math.abs(gap) > threshold) {
-    if (stage === "summer") {
+    if (stage === "summer" && pnlPct > 0) {
+      // Trend bucket: excess is due to price appreciation — let it run
       const trendPct = ((currentValue - targetValue) / targetValue * 100).toFixed(0);
       notes.push(`📈 趋势桶运行中（超配额 +${trendPct}%），跟踪止盈保护`);
       // fall through to hold — trailing stop handles the exit
