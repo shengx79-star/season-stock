@@ -227,7 +227,7 @@ export function computeMarketContext(
 
 const stageCoeffMap: Record<string, number> = {
   winter: 0.15,
-  spring: 0.45,
+  spring: 0.52,
   summer: 0.75,
   autumn: 0.00,
   unknown: 0.00,
