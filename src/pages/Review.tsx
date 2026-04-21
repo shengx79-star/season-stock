@@ -5,6 +5,7 @@ import { fetchKlineData } from "@/lib/alltickService";
 import { seasonEmojis } from "@/lib/stockData";
 import { Loader2, TrendingUp, TrendingDown, Minus, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
 import type { Candle } from "@/lib/stockClassifier";
+import { stageCoeffMap, WINTER_CONFIDENCE_THRESHOLD } from "@/lib/positionEngine";
 
 // ─── types ────────────────────────────────────────────────
 
@@ -83,29 +84,35 @@ function computeOutcome(snap: PositionSnapshot, klines: Candle[], evalDays: numb
   return { snapshot: snap, priceChangePct, stopHit, status };
 }
 
-function generateSuggestions(outcomes: SnapshotOutcome[], evalDays: number): ParamSuggestion[] {
+function generateSuggestions(
+  outcomes: SnapshotOutcome[],
+  coeffMap: Record<string, number>,
+  winterConfThreshold: number,
+): ParamSuggestion[] {
   const evaluated = outcomes.filter(o => o.status !== "pending" && o.status !== "neutral");
   const suggestions: ParamSuggestion[] = [];
+  const MIN_SAMPLES = 8;
 
   const byStageAction = (stage: string, actions: string[]) =>
     evaluated.filter(o => o.snapshot.stage === stage && actions.includes(o.snapshot.action));
 
   // Spring enter/add
   const springEnter = byStageAction("spring", ["enter", "add"]);
-  if (springEnter.length >= 3) {
+  if (springEnter.length >= MIN_SAMPLES) {
     const correct = springEnter.filter(o => o.status === "correct").length;
     const pct = correct / springEnter.length * 100;
+    const cur = coeffMap.spring ?? 0.52;
     if (pct > 70) {
       suggestions.push({
         title: "春季系数偏保守",
-        detail: `春季建仓/加仓 ${evalDays}日准确率 ${pct.toFixed(0)}%（高于基准），当前系数 0.45，可尝试上调至 0.50–0.55`,
+        detail: `春季建仓/加仓 10日准确率 ${pct.toFixed(0)}%（高于基准，样本 ${springEnter.length} 个），当前系数 ${cur}，可尝试上调至 ${(cur + 0.05).toFixed(2)}–${(cur + 0.10).toFixed(2)}`,
         sampleCount: springEnter.length,
         accuracyPct: pct,
       });
     } else if (pct < 45) {
       suggestions.push({
         title: "春季信号误报偏多",
-        detail: `春季建仓/加仓 ${evalDays}日准确率仅 ${pct.toFixed(0)}%，考虑提高置信度阈值（0.65→0.75）或减小春季系数（0.45→0.35）`,
+        detail: `春季建仓/加仓 10日准确率仅 ${pct.toFixed(0)}%（样本 ${springEnter.length} 个），考虑提高置信度阈值或减小春季系数（${cur}→${(cur - 0.10).toFixed(2)}）`,
         sampleCount: springEnter.length,
         accuracyPct: pct,
       });
@@ -114,13 +121,15 @@ function generateSuggestions(outcomes: SnapshotOutcome[], evalDays: number): Par
 
   // Winter enter
   const winterEnter = byStageAction("winter", ["enter", "add"]);
-  if (winterEnter.length >= 3) {
+  if (winterEnter.length >= MIN_SAMPLES) {
     const correct = winterEnter.filter(o => o.status === "correct").length;
     const pct = correct / winterEnter.length * 100;
+    const curPct = (winterConfThreshold * 100).toFixed(0);
+    const newPct = ((winterConfThreshold + 0.10) * 100).toFixed(0);
     if (pct < 40) {
       suggestions.push({
         title: "冬季入场成功率偏低",
-        detail: `冬季建仓 ${evalDays}日准确率 ${pct.toFixed(0)}%，建议提高冬季入场的置信度阈值（0.60→0.70）`,
+        detail: `冬季建仓 10日准确率 ${pct.toFixed(0)}%（样本 ${winterEnter.length} 个），建议提高冬季入场的置信度阈值（${curPct}%→${newPct}%）`,
         sampleCount: winterEnter.length,
         accuracyPct: pct,
       });
@@ -129,13 +138,13 @@ function generateSuggestions(outcomes: SnapshotOutcome[], evalDays: number): Par
 
   // Autumn false signals (exit followed by price rise)
   const autumnExit = byStageAction("autumn", ["exit_autumn", "reduce"]);
-  if (autumnExit.length >= 3) {
+  if (autumnExit.length >= MIN_SAMPLES) {
     const falseSig = autumnExit.filter(o => o.status === "wrong").length;
     const falsePct = falseSig / autumnExit.length * 100;
     if (falsePct > 50) {
       suggestions.push({
         title: "秋季退出信号误判偏多",
-        detail: `${falsePct.toFixed(0)}% 的秋季退出建议在 ${evalDays} 日内股价反而上涨，秋季判定可能过于敏感`,
+        detail: `${falsePct.toFixed(0)}% 的秋季退出建议在 10 日内股价反而上涨（样本 ${autumnExit.length} 个），秋季判定可能过于敏感`,
         sampleCount: autumnExit.length,
         accuracyPct: 100 - falsePct,
       });
@@ -144,13 +153,14 @@ function generateSuggestions(outcomes: SnapshotOutcome[], evalDays: number): Par
 
   // Summer holds/adds
   const summerBuy = byStageAction("summer", ["add", "hold"]);
-  if (summerBuy.length >= 3) {
+  if (summerBuy.length >= MIN_SAMPLES) {
     const correct = summerBuy.filter(o => o.status === "correct").length;
     const pct = correct / summerBuy.length * 100;
+    const cur = coeffMap.summer ?? 0.75;
     if (pct > 75) {
       suggestions.push({
         title: "夏季系数可适当上调",
-        detail: `夏季持仓/加仓准确率 ${pct.toFixed(0)}%，当前系数 0.75，可尝试上调至 0.80`,
+        detail: `夏季持仓/加仓准确率 ${pct.toFixed(0)}%（样本 ${summerBuy.length} 个），当前系数 ${cur}，可尝试上调至 ${(cur + 0.05).toFixed(2)}`,
         sampleCount: summerBuy.length,
         accuracyPct: pct,
       });
@@ -169,7 +179,7 @@ const Review = () => {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(true);
-  const [evalDays, setEvalDays] = useState<1 | 3 | 5>(1);
+  const [evalDays, setEvalDays] = useState<5 | 10 | 20>(5);
 
   // Load snapshots
   useEffect(() => {
@@ -225,8 +235,19 @@ const Review = () => {
     return { pct: correct / evaluated.length * 100, total: evaluated.length };
   }, [outcomes]);
 
+  // Fixed 10-day outcomes for parameter suggestions — independent of UI evalDays
+  const outcomesSuggestion = useMemo<SnapshotOutcome[]>(() => {
+    return snapshots.map(snap => {
+      const klines = klineMap.get(snap.symbol) || [];
+      return computeOutcome(snap, klines, 10);
+    });
+  }, [snapshots, klineMap]);
+
   // Parameter suggestions
-  const suggestions = useMemo(() => generateSuggestions(outcomes, evalDays), [outcomes, evalDays]);
+  const suggestions = useMemo(
+    () => generateSuggestions(outcomesSuggestion, stageCoeffMap, WINTER_CONFIDENCE_THRESHOLD),
+    [outcomesSuggestion],
+  );
 
   // 按季节胜率统计
   const seasonStats = useMemo(() => {
@@ -306,7 +327,7 @@ const Review = () => {
         <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs">
           <div className="flex items-center gap-1">
             <span className="text-muted-foreground">周期</span>
-            {([1, 3, 5] as const).map(d => (
+            {([5, 10, 20] as const).map(d => (
               <button
                 key={d}
                 onClick={() => setEvalDays(d)}

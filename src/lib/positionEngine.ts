@@ -225,7 +225,9 @@ export function computeMarketContext(
 // Layer 2: 个股目标仓位
 // =============================================
 
-const stageCoeffMap: Record<string, number> = {
+export const WINTER_CONFIDENCE_THRESHOLD = 0.60;
+
+export const stageCoeffMap: Record<string, number> = {
   winter: 0.15,
   spring: 0.52,
   summer: 0.75,
@@ -528,7 +530,7 @@ function getAction(
       winterOK =
         upTurnCount >= 1 ||
         (percentB !== null && percentB <= 20) ||
-        quantConfidence >= 0.60;
+        quantConfidence >= WINTER_CONFIDENCE_THRESHOLD;
       if (!winterOK) {
         notes.push("⛔ 冬季入场门槛未达（需 upTurn≥1 或 %B≤20）");
         return { action: "hold", priority: 5, notes };

@@ -210,7 +210,11 @@ const Portfolio = () => {
   useEffect(() => {
     if (!portfolio) return;
     const today = new Date().toISOString().slice(0, 10);
-    saveSnapshot(today, portfolio.positions, portfolio.market);
+    const seasonScoresMap = new Map<string, number>();
+    for (const [sym, cls] of classifications) {
+      seasonScoresMap.set(sym, cls.seasonScore);
+    }
+    saveSnapshot(today, portfolio.positions, portfolio.market, seasonScoresMap);
   }, [portfolio?.positions.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (portfolioLoading) {

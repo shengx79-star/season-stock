@@ -58,6 +58,7 @@ export function usePositionSnapshots() {
     date: string,
     positions: StockPositionResult[],
     market: MarketContext,
+    seasonScores?: Map<string, number>,
   ): Promise<void> => {
     if (!user || positions.length === 0) return;
 
@@ -77,7 +78,7 @@ export function usePositionSnapshots() {
       action:                 pos.action,
       action_priority:        pos.actionPriority,
       confidence:             pos.quantConfidence,
-      season_score:           0,
+      season_score:           seasonScores?.get(pos.symbol) ?? 0,
       current_price:          pos.currentPrice,
       cost_basis:             pos.costBasis,
       pnl_pct:                pos.pnlPct,
