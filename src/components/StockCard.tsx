@@ -7,6 +7,7 @@ import { TrendingUp, TrendingDown, X, Briefcase } from "lucide-react";
 import { Season } from "@/lib/stockData";
 import { detectMarketLabel, getMarketColorClass } from "@/lib/marketDetect";
 import { RealtimeQuote } from "@/hooks/useRealtimePrices";
+import { computeCompositeRating, RATING_STYLE } from "@/lib/ratingEngine";
 
 const SEASON_LABEL: Record<string, string> = { spring: "春", summer: "夏", autumn: "秋", winter: "冬" };
 const SEASON_COLOR: Record<string, string> = {
@@ -111,65 +112,73 @@ export const StockCard = ({ stock, classification, dailyBars, liveQuote, onClick
         <TodayCandle quote={liveQuote} />
       )}
 
-      {classification && classification.stage !== "unknown" && (
-        <div className="mt-2 md:mt-3 pt-2 md:pt-3 border-t border-border space-y-1.5">
-          {/* 短期 / 中期 四季并排 */}
-          <div className="flex items-center gap-2 text-[10px] md:text-xs">
-            <span className="text-muted-foreground shrink-0">短期</span>
-            <span className={`font-semibold ${SEASON_COLOR[classification.stage] ?? "text-foreground"}`}>
-              {SEASON_LABEL[classification.stage] ?? "—"}
-            </span>
-            <span className="text-muted-foreground">
-              {confidence !== undefined ? (confidence * 100).toFixed(0) + "%" : "—"}
-            </span>
-            <span className="text-border mx-0.5">|</span>
-            <span className="text-muted-foreground shrink-0">中期</span>
-            {(() => {
-              const mt = classification.mediumTermAnalysis;
-              if (!mt || mt.stage === "unknown") return <span className="text-muted-foreground">—</span>;
-              return (
+      {classification && classification.stage !== "unknown" && (() => {
+        const rating = computeCompositeRating(classification);
+        const style = RATING_STYLE[rating.level];
+        const mt = classification.mediumTermAnalysis;
+        const vs = classification.volumeStage;
+        const priceBull = classification.stage === "spring" || classification.stage === "summer";
+        const volBull   = vs === "spring" || vs === "summer";
+        const volSync   = vs !== "unknown" && (priceBull === volBull);
+        const volDiverge = vs !== "unknown" && (priceBull !== volBull);
+
+        return (
+          <div className="mt-2 md:mt-3 pt-2 md:pt-3 border-t border-border space-y-1.5">
+
+            {/* 综合评级 */}
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] md:text-xs text-muted-foreground">综合评级</span>
+              <span className={`px-2 py-0.5 rounded text-[10px] md:text-xs font-semibold border ${style.bg} ${style.text} ${style.border}`}>
+                {rating.level}
+              </span>
+            </div>
+
+            {/* 分解依据 */}
+            <div className="space-y-0.5">
+              {rating.factors.map((f, i) => (
+                <div key={i} className="flex items-center justify-between text-[10px] md:text-xs">
+                  <span className={f.score > 0 ? "text-foreground/80" : "text-muted-foreground"}>
+                    <span className={`mr-1 font-bold ${f.score > 0 ? "text-[hsl(var(--spring))]" : "text-destructive"}`}>
+                      {f.score > 0 ? "↑" : "↓"}
+                    </span>
+                    {f.description}
+                  </span>
+                  <span className={`font-medium shrink-0 ml-2 ${f.score > 0 ? "text-[hsl(var(--spring))]" : "text-destructive"}`}>
+                    {f.score > 0 ? "+" : ""}{f.score}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* 短期 / 中期 / 量 — 一行紧凑显示 */}
+            <div className="flex items-center gap-1.5 text-[10px] md:text-xs text-muted-foreground pt-0.5 border-t border-border/50">
+              <span>短期</span>
+              <span className={`font-semibold ${SEASON_COLOR[classification.stage] ?? ""}`}>
+                {SEASON_LABEL[classification.stage] ?? "—"}
+              </span>
+              <span className="text-border">·</span>
+              <span>中期</span>
+              {mt && mt.stage !== "unknown"
+                ? <span className={`font-semibold ${SEASON_COLOR[mt.stage] ?? ""}`}>{SEASON_LABEL[mt.stage]}</span>
+                : <span>—</span>
+              }
+              {mt?.monthlyAlignment && (
+                <span className="px-1 rounded text-[9px] bg-[hsl(var(--spring))]/15 text-[hsl(var(--spring))] font-medium">共振</span>
+              )}
+              {vs !== "unknown" && (
                 <>
-                  <span className={`font-semibold ${SEASON_COLOR[mt.stage] ?? "text-foreground"}`}>
-                    {SEASON_LABEL[mt.stage]}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {(mt.confidence * 100).toFixed(0)}%
-                  </span>
-                  {mt.monthlyAlignment && (
-                    <span className="ml-auto px-1 py-0.5 rounded text-[9px] bg-[hsl(var(--spring))]/15 text-[hsl(var(--spring))] font-medium">共振</span>
-                  )}
+                  <span className="text-border">·</span>
+                  <span>量</span>
+                  <span className={`font-semibold ${SEASON_COLOR[vs] ?? ""}`}>{SEASON_LABEL[vs]}</span>
+                  {volSync    && <span className="text-[hsl(var(--spring))]">同步</span>}
+                  {volDiverge && <span className="text-destructive font-medium">⚠背离</span>}
                 </>
-              );
-            })()}
+              )}
+            </div>
+
           </div>
-          {/* 温度 / 转折 */}
-          <div className="flex justify-between text-[10px] md:text-xs text-muted-foreground">
-            <span>温度 <span className="font-medium text-foreground">{seasonScore}</span></span>
-            <span>转折 ↑{classification.turnSignals.upTurnCount} ↓{classification.turnSignals.downTurnCount}</span>
-          </div>
-          {/* 量 */}
-          {(() => {
-            const vs = classification.volumeStage;
-            if (!vs || vs === "unknown") return null;
-            const priceStage = classification.stage;
-            const priceBull = priceStage === "spring" || priceStage === "summer";
-            const volBull   = vs === "spring" || vs === "summer";
-            const sync = priceBull === volBull;
-            const syncColor = sync ? "text-[hsl(var(--spring))]" : "text-destructive";
-            const syncLabel = sync ? "量价同步" : "量价背离";
-            const syncIcon  = sync ? "✓" : "⚠";
-            return (
-              <div className="flex items-center gap-2 text-[10px] md:text-xs">
-                <span className="text-muted-foreground shrink-0">量</span>
-                <span className={`font-semibold ${SEASON_COLOR[vs] ?? "text-foreground"}`}>
-                  {SEASON_LABEL[vs]}
-                </span>
-                <span className={`font-medium ${syncColor}`}>{syncIcon} {syncLabel}</span>
-              </div>
-            );
-          })()}
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
