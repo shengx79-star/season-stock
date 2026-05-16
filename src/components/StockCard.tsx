@@ -8,6 +8,14 @@ import { Season } from "@/lib/stockData";
 import { detectMarketLabel, getMarketColorClass } from "@/lib/marketDetect";
 import { RealtimeQuote } from "@/hooks/useRealtimePrices";
 
+const SEASON_LABEL: Record<string, string> = { spring: "春", summer: "夏", autumn: "秋", winter: "冬" };
+const SEASON_COLOR: Record<string, string> = {
+  spring: "text-[hsl(var(--spring))]",
+  summer: "text-[hsl(var(--summer))]",
+  autumn: "text-[hsl(var(--autumn))]",
+  winter: "text-[hsl(var(--winter))]",
+};
+
 interface StockCardProps {
   stock: Stock;
   classification?: ClassificationResult;
@@ -104,32 +112,44 @@ export const StockCard = ({ stock, classification, dailyBars, liveQuote, onClick
       )}
 
       {classification && classification.stage !== "unknown" && (
-        <div className="mt-2 md:mt-3 pt-2 md:pt-3 border-t border-border space-y-1">
+        <div className="mt-2 md:mt-3 pt-2 md:pt-3 border-t border-border space-y-1.5">
+          {/* 短期 / 中期 四季并排 */}
+          <div className="flex items-center gap-2 text-[10px] md:text-xs">
+            <span className="text-muted-foreground shrink-0">短期</span>
+            <span className={`font-semibold ${SEASON_COLOR[classification.stage] ?? "text-foreground"}`}>
+              {SEASON_LABEL[classification.stage] ?? "—"}
+            </span>
+            <span className="text-muted-foreground">
+              {confidence !== undefined ? (confidence * 100).toFixed(0) + "%" : "—"}
+            </span>
+            <span className="text-border mx-0.5">|</span>
+            <span className="text-muted-foreground shrink-0">中期</span>
+            {(() => {
+              const mt = classification.mediumTermAnalysis;
+              if (!mt || mt.stage === "unknown") return <span className="text-muted-foreground">—</span>;
+              return (
+                <>
+                  <span className={`font-semibold ${SEASON_COLOR[mt.stage] ?? "text-foreground"}`}>
+                    {SEASON_LABEL[mt.stage]}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {(mt.confidence * 100).toFixed(0)}%
+                  </span>
+                  {mt.monthlyAlignment && (
+                    <span className="ml-auto px-1 py-0.5 rounded text-[9px] bg-[hsl(var(--spring))]/15 text-[hsl(var(--spring))] font-medium">共振</span>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+          {/* 温度 / 转折 / 蓄力 */}
           <div className="flex justify-between text-[10px] md:text-xs text-muted-foreground">
-            <span>置信度 <span className={`font-medium ${
-              confidenceLevel === "high" ? "text-[hsl(var(--spring))]" :
-              confidenceLevel === "medium" ? "text-[hsl(var(--autumn))]" : "text-destructive"
-            }`}>{confidence !== undefined ? (confidence * 100).toFixed(0) + "%" : "—"}</span></span>
             <span>温度 <span className="font-medium text-foreground">{seasonScore}</span></span>
             <span>转折 ↑{classification.turnSignals.upTurnCount} ↓{classification.turnSignals.downTurnCount}</span>
+            {classification.mediumTermAnalysis?.accumulationScore > 0 && (
+              <span>蓄力 <span className="font-medium text-foreground">{classification.mediumTermAnalysis.accumulationScore}</span></span>
+            )}
           </div>
-          {(() => {
-            const mt = classification.mediumTermAnalysis;
-            if (!mt) return null;
-            const scoreColor = mt.compositeScore >= 70 ? "text-[hsl(var(--spring))]" :
-              mt.compositeScore >= 50 ? "text-[hsl(var(--autumn))]" : "text-muted-foreground";
-            return (
-              <div className="flex items-center justify-between text-[10px] md:text-xs">
-                <span className="text-muted-foreground">中期
-                  <span className={`ml-1 font-medium ${scoreColor}`}>{mt.compositeScore}</span>
-                </span>
-                <span className={`font-medium ${scoreColor}`}>{mt.structureLabel}</span>
-                {mt.monthlyAlignment && (
-                  <span className="px-1 py-0.5 rounded text-[9px] bg-[hsl(var(--spring))]/15 text-[hsl(var(--spring))] font-medium">月线共振</span>
-                )}
-              </div>
-            );
-          })()}
         </div>
       )}
     </div>
