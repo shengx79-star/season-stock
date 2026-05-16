@@ -99,6 +99,25 @@ export interface ClassificationFlags {
   lowEvidence: boolean;
 }
 
+export type MonthlyStage = "bullish" | "neutral" | "bearish";
+export type MediumTermLabel =
+  | "月线共振·蓄力"
+  | "月线共振·趋势"
+  | "蓄力待发"
+  | "趋势延续"
+  | "顶部区域"
+  | "底部构筑"
+  | "中性";
+
+export interface MediumTermAnalysis {
+  monthlyStage: MonthlyStage;
+  monthlyAlignment: boolean;   // 日线+周线+月线三级同向
+  accumulationScore: number;   // 0-100 蓄力质量
+  relativeStrength: number;    // 0-100 相对强度近似值
+  compositeScore: number;      // 0-100 综合中期评分
+  structureLabel: MediumTermLabel;
+}
+
 export interface ClassificationResult {
   stage: Stage;
   quantStage: Stage;
@@ -114,6 +133,7 @@ export interface ClassificationResult {
   aiCandidates: PureStage[];
   needsAI: boolean;
   indicators: IndicatorSnapshot;
+  mediumTermAnalysis: MediumTermAnalysis;
 }
 
 export interface ClassificationInput {
@@ -613,6 +633,152 @@ function calcSeasonScore(scores: StageScores): number {
   );
 }
 
+// =============================================
+// 中期分析辅助函数
+// =============================================
+
+function computeMonthlyBars(dailyBars: Candle[]): Candle[] {
+  const monthMap = new Map<string, { open: number; high: number; low: number; close: number; volume: number }>();
+  for (const bar of dailyBars) {
+    const month = bar.date.slice(0, 7);
+    const ex = monthMap.get(month);
+    if (!ex) {
+      monthMap.set(month, { open: bar.open, high: bar.high, low: bar.low, close: bar.close, volume: bar.volume });
+    } else {
+      ex.high = Math.max(ex.high, bar.high);
+      ex.low = Math.min(ex.low, bar.low);
+      ex.close = bar.close;
+      ex.volume += bar.volume;
+    }
+  }
+  return Array.from(monthMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, v]) => ({ date: month + "-01", open: v.open, high: v.high, low: v.low, close: v.close, volume: v.volume }));
+}
+
+function computeMonthlyStage(monthlyBars: Candle[]): MonthlyStage {
+  if (monthlyBars.length < 10) return "neutral";
+  const closes = monthlyBars.map(b => b.close);
+  const ma5Arr = sma(closes, 5);
+  const ma10Arr = sma(closes, 10);
+  const i = closes.length - 1;
+  const close = closes[i];
+  const ma5 = ma5Arr[i];
+  const ma10 = ma10Arr[i];
+  if (ma5 === null || ma10 === null) return "neutral";
+  if (close > ma5 && ma5 > ma10) return "bullish";
+  if (close < ma5 && ma5 < ma10) return "bearish";
+  return "neutral";
+}
+
+function computeAccumulationScore(dailyBars: Candle[], ma60Val: number | null): number {
+  if (dailyBars.length < 60 || ma60Val === null || ma60Val === 0) return 0;
+  const recent60 = dailyBars.slice(-60);
+
+  // Base Width: days within ±8% of MA60 → max 40 pts
+  const baseCount = recent60.filter(b => Math.abs(b.close - ma60Val) / ma60Val <= 0.08).length;
+  const baseWidthScore = (baseCount / 60) * 40;
+
+  // Volatility Contraction: ATR20 / ATR60 → max 30 pts
+  let atr20 = 0, atr60 = 0;
+  if (dailyBars.length >= 21) {
+    const bars = dailyBars.slice(-21);
+    let s = 0;
+    for (let i = 1; i < bars.length; i++)
+      s += Math.max(bars[i].high - bars[i].low, Math.abs(bars[i].high - bars[i-1].close), Math.abs(bars[i].low - bars[i-1].close));
+    atr20 = s / 20;
+  }
+  if (dailyBars.length >= 61) {
+    const bars = dailyBars.slice(-61);
+    let s = 0;
+    for (let i = 1; i < bars.length; i++)
+      s += Math.max(bars[i].high - bars[i].low, Math.abs(bars[i].high - bars[i-1].close), Math.abs(bars[i].low - bars[i-1].close));
+    atr60 = s / 60;
+  }
+  const volContScore = (atr60 > 0 && atr20 > 0)
+    ? Math.max(0, Math.min(30, (1 - atr20 / atr60) / 0.3 * 30))
+    : 0;
+
+  // Volume Dry-up: recent 20 vs older 40 avg volume, only when above MA60 → max 30 pts
+  let volDryScore = 0;
+  const lastClose = recent60[recent60.length - 1].close;
+  if (lastClose > ma60Val) {
+    const recent20Vol = recent60.slice(-20).reduce((s, b) => s + b.volume, 0) / 20;
+    const older40Vol = recent60.slice(0, 40).reduce((s, b) => s + b.volume, 0) / 40;
+    if (older40Vol > 0)
+      volDryScore = Math.max(0, Math.min(30, (1 - recent20Vol / older40Vol) / 0.4 * 30));
+  }
+
+  return Math.round(baseWidthScore + volContScore + volDryScore);
+}
+
+function computeApproxRelativeStrength(dailyBars: Candle[], ma60Val: number | null): number {
+  if (dailyBars.length < 60 || ma60Val === null || ma60Val === 0) return 50;
+  const recent60 = dailyBars.slice(-60);
+  const lastClose = recent60[recent60.length - 1].close;
+  const firstClose = recent60[0].close;
+
+  // Days above MA60 → max 40 pts
+  const aboveDays = recent60.filter(b => b.close > ma60Val).length;
+  const aboveMa60Score = (aboveDays / 60) * 40;
+
+  // 3-month price change: -20%→0 pts, +20%→40 pts
+  const ret = firstClose > 0 ? (lastClose - firstClose) / firstClose : 0;
+  const returnScore = Math.max(0, Math.min(40, (ret + 0.2) / 0.4 * 40));
+
+  // Current position vs MA60: -10%→0, +10%→20 pts
+  const bias = (lastClose - ma60Val) / ma60Val;
+  const positionScore = Math.max(0, Math.min(20, (bias + 0.1) / 0.2 * 20));
+
+  return Math.round(aboveMa60Score + returnScore + positionScore);
+}
+
+function computeMediumTermAnalysis(
+  dailyBars: Candle[],
+  ma60Val: number | null,
+  dailyStage: PureStage,
+  weeklyBullish: boolean,
+): MediumTermAnalysis {
+  const monthlyBars = computeMonthlyBars(dailyBars);
+  const monthlyStage = computeMonthlyStage(monthlyBars);
+  const accumulationScore = computeAccumulationScore(dailyBars, ma60Val);
+  const relativeStrength = computeApproxRelativeStrength(dailyBars, ma60Val);
+
+  const dailyBullish = dailyStage === "spring" || dailyStage === "summer";
+  const monthlyAlignment = dailyBullish && weeklyBullish && monthlyStage === "bullish";
+
+  const monthlyScore = monthlyStage === "bullish" ? 100 : monthlyStage === "neutral" ? 50 : 0;
+  const compositeScore = Math.round(monthlyScore * 0.35 + accumulationScore * 0.40 + relativeStrength * 0.25);
+
+  let structureLabel: MediumTermLabel;
+  if (monthlyStage === "bullish" && dailyStage === "spring") {
+    structureLabel = "月线共振·蓄力";
+  } else if (monthlyStage === "bullish" && dailyStage === "summer") {
+    structureLabel = "月线共振·趋势";
+  } else if (accumulationScore >= 55 && dailyStage !== "autumn") {
+    structureLabel = "蓄力待发";
+  } else if (dailyStage === "summer" && relativeStrength >= 60) {
+    structureLabel = "趋势延续";
+  } else if (dailyStage === "autumn" || relativeStrength < 30) {
+    structureLabel = "顶部区域";
+  } else if (dailyStage === "winter" && accumulationScore >= 30) {
+    structureLabel = "底部构筑";
+  } else {
+    structureLabel = "中性";
+  }
+
+  return { monthlyStage, monthlyAlignment, accumulationScore, relativeStrength, compositeScore, structureLabel };
+}
+
+const DEFAULT_MEDIUM_TERM: MediumTermAnalysis = {
+  monthlyStage: "neutral",
+  monthlyAlignment: false,
+  accumulationScore: 0,
+  relativeStrength: 50,
+  compositeScore: 0,
+  structureLabel: "中性",
+};
+
 export function classifyStock(input: ClassificationInput): ClassificationResult {
   const { dailyBars, weeklyBars, currentStage = "unknown" } = input;
 
@@ -633,6 +799,7 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
       notes: ["数据不足：需要至少60根日线和10根周线"],
       aiCandidates: [], needsAI: false,
       indicators: { ...EMPTY_INDICATOR, close: last(dailyBars)?.close ?? 0 },
+      mediumTermAnalysis: DEFAULT_MEDIUM_TERM,
     };
   }
 
@@ -979,6 +1146,13 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
     confidenceLevel === "low" ||
     weeklyDailyConflict;
 
+  const mediumTermAnalysis = computeMediumTermAnalysis(
+    dailyBars,
+    indicators.ma60,
+    quantStage,
+    weeklyBullish,
+  );
+
   return {
     stage: quantStage,
     quantStage,
@@ -1000,6 +1174,7 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
     aiCandidates,
     needsAI,
     indicators,
+    mediumTermAnalysis,
   };
 }
 

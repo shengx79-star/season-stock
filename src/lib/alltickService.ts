@@ -76,7 +76,7 @@ export async function fetchSingleKline(
 
   // Single stock: 2 sequential calls is fine
   const [dailyBars, weeklyBars] = await Promise.all([
-    fetchKline(symbol, 'daily', 120),
+    fetchKline(symbol, 'daily', 250),
     fetchKline(symbol, 'weekly', 35),
   ]);
 
@@ -111,7 +111,7 @@ export async function fetchKlineData(
 
   // Fetch daily and weekly batches sequentially (each batch is sequential on server)
   const [dailyMap, weeklyMap] = await Promise.all([
-    fetchBatch(uncached, 'daily', 120),
+    fetchBatch(uncached, 'daily', 250),
     fetchBatch(uncached, 'weekly', 35),
   ]);
 

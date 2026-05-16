@@ -344,8 +344,11 @@ function computeSpringEntryPhase(
   upTurnCount: number,
   pnlPct: number,       // 百分比，如 5.0 = +5%
   weeklyDailyConflict: boolean,
+  monthlyAlignment: boolean,
 ): "pilot" | "confirmed" | null {
   if (stage !== "spring") return null;
+  // 月线共振时直接进入确认仓，跳过 pilot 限制
+  if (monthlyAlignment) return "confirmed";
   if (
     effectiveSetupScore >= 3 &&
     !weeklyDailyConflict &&
@@ -625,12 +628,14 @@ export function computePortfolio(
         ? input.setupScore
         : setupScoreFromConfidence(quantConfidence);
 
+    const monthlyAlignment = cls?.mediumTermAnalysis?.monthlyAlignment ?? false;
     const springEntryPhase = computeSpringEntryPhase(
       stage,
       effectiveSetupScore,
       upTurnCount,
       pnlPct,
       weeklyDailyConflict,
+      monthlyAlignment,
     );
 
     // P1: spring 先锋仓只释放 40%，confirmed 释放全量
