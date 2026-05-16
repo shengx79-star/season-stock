@@ -126,6 +126,7 @@ export interface ClassificationResult {
   needsAI: boolean;
   indicators: IndicatorSnapshot;
   mediumTermAnalysis: MediumTermAnalysis;
+  volumeStage: Stage; // VOLUME 组主导季节，"unknown" 表示无明显信号
 }
 
 export interface ClassificationInput {
@@ -834,6 +835,7 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
       aiCandidates: [], needsAI: false,
       indicators: { ...EMPTY_INDICATOR, close: last(dailyBars)?.close ?? 0 },
       mediumTermAnalysis: DEFAULT_MEDIUM_TERM,
+      volumeStage: "unknown",
     };
   }
 
@@ -1251,6 +1253,10 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
     confidenceLevel === "low" ||
     weeklyDailyConflict;
 
+  // VOLUME 组主导季节（取得分最高的，0分时返回 unknown）
+  const volTops = topNStages(volume, 1);
+  const volumeStage: Stage = (volTops.length > 0 && volTops[0][1] > 0) ? volTops[0][0] : "unknown";
+
   const mediumTermAnalysis = computeMediumTermAnalysis(
     dailyBars,
     indicators.ma60,
@@ -1280,6 +1286,7 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
     needsAI,
     indicators,
     mediumTermAnalysis,
+    volumeStage,
   };
 }
 

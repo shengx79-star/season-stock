@@ -142,14 +142,32 @@ export const StockCard = ({ stock, classification, dailyBars, liveQuote, onClick
               );
             })()}
           </div>
-          {/* 温度 / 转折 / 蓄力 */}
+          {/* 温度 / 转折 */}
           <div className="flex justify-between text-[10px] md:text-xs text-muted-foreground">
             <span>温度 <span className="font-medium text-foreground">{seasonScore}</span></span>
             <span>转折 ↑{classification.turnSignals.upTurnCount} ↓{classification.turnSignals.downTurnCount}</span>
-            {classification.mediumTermAnalysis?.accumulationScore > 0 && (
-              <span>蓄力 <span className="font-medium text-foreground">{classification.mediumTermAnalysis.accumulationScore}</span></span>
-            )}
           </div>
+          {/* 量 */}
+          {(() => {
+            const vs = classification.volumeStage;
+            if (!vs || vs === "unknown") return null;
+            const priceStage = classification.stage;
+            const priceBull = priceStage === "spring" || priceStage === "summer";
+            const volBull   = vs === "spring" || vs === "summer";
+            const sync = priceBull === volBull;
+            const syncColor = sync ? "text-[hsl(var(--spring))]" : "text-destructive";
+            const syncLabel = sync ? "量价同步" : "量价背离";
+            const syncIcon  = sync ? "✓" : "⚠";
+            return (
+              <div className="flex items-center gap-2 text-[10px] md:text-xs">
+                <span className="text-muted-foreground shrink-0">量</span>
+                <span className={`font-semibold ${SEASON_COLOR[vs] ?? "text-foreground"}`}>
+                  {SEASON_LABEL[vs]}
+                </span>
+                <span className={`font-medium ${syncColor}`}>{syncIcon} {syncLabel}</span>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
