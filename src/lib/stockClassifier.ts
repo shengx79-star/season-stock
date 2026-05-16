@@ -29,6 +29,7 @@ export interface ScoreBreakdown {
   turn: StageScores;
   extension: StageScores;
   weekly: StageScores;
+  volume: StageScores;
 }
 
 export interface TurnSignals {
@@ -71,6 +72,8 @@ export interface IndicatorSnapshot {
   percentB: number | null;
   ma20Slope5: number | null;
   volumeRatio5: number | null;
+  obvMA20Ratio: number | null;    // OBV / OBV_MA20，>1=净流入，<1=净流出
+  upDownVolRatio: number | null;  // 上涨日均量 / 下跌日均量（20日）
   consecutiveUpDays: number;
   consecutiveDownDays: number;
   dayReturnPct: number | null;
@@ -353,6 +356,30 @@ function calcVolumeRatio5(bars: Candle[]): Array<number | null> {
   return out;
 }
 
+function computeOBV(bars: Candle[]): number[] {
+  const obv: number[] = Array(bars.length).fill(0);
+  for (let i = 1; i < bars.length; i++) {
+    if (bars[i].close > bars[i - 1].close) obv[i] = obv[i - 1] + bars[i].volume;
+    else if (bars[i].close < bars[i - 1].close) obv[i] = obv[i - 1] - bars[i].volume;
+    else obv[i] = obv[i - 1];
+  }
+  return obv;
+}
+
+function computeUpDownVolRatio(bars: Candle[]): number | null {
+  if (bars.length < 5) return null;
+  const recent = bars.slice(-20);
+  let upVol = 0, upCount = 0, downVol = 0, downCount = 0;
+  for (let i = 1; i < recent.length; i++) {
+    if (recent[i].close > recent[i - 1].close) { upVol += recent[i].volume; upCount++; }
+    else if (recent[i].close < recent[i - 1].close) { downVol += recent[i].volume; downCount++; }
+  }
+  const avgUp = upCount > 0 ? upVol / upCount : 0;
+  const avgDown = downCount > 0 ? downVol / downCount : 0;
+  if (avgDown === 0) return null;
+  return avgUp / avgDown;
+}
+
 /** V2: 连续涨跌用 close vs open 判断 */
 function calcStreaksV2(bars: Candle[]): { consecutiveUpDays: number; consecutiveDownDays: number } {
   let up = 0;
@@ -464,6 +491,8 @@ function buildIndicatorContext(dailyBars: Candle[], weeklyBars: Candle[]) {
   const bias60 = calcBias(close, ma60);
   const ma20Slope5 = calcSlopePct(ma20, 5);
   const volumeRatio5 = calcVolumeRatio5(dailyBars);
+  const obvRaw = computeOBV(dailyBars);
+  const obvMA20 = sma(obvRaw, 20);
 
   const weekMA5 = sma(weekClose, 5);
   const weekMA10 = sma(weekClose, 10);
@@ -477,6 +506,7 @@ function buildIndicatorContext(dailyBars: Candle[], weeklyBars: Candle[]) {
     k, d, j,
     bollMid: mid, bollUpper: upper, bollLower: lower, percentB,
     ma20Slope5, volumeRatio5,
+    obvRaw, obvMA20,
     weekClose, weekMA5, weekMA10,
     weekDif: weekMacd.dif, weekDea: weekMacd.dea, weekHist: weekMacd.hist,
   };
@@ -563,6 +593,12 @@ function latestSnapshot(
     percentB: last(ctx.percentB) ?? null,
     ma20Slope5: last(ctx.ma20Slope5) ?? null,
     volumeRatio5: last(ctx.volumeRatio5) ?? null,
+    obvMA20Ratio: (() => {
+      const o = last(ctx.obvRaw);
+      const m = last(ctx.obvMA20);
+      return (isNum(o) && isNum(m) && m !== 0) ? round2(o / m) : null;
+    })(),
+    upDownVolRatio: computeUpDownVolRatio(dailyBars),
     consecutiveUpDays: streaks.consecutiveUpDays,
     consecutiveDownDays: streaks.consecutiveDownDays,
     dayReturnPct: dayReturnPct(dailyBars),
@@ -602,6 +638,7 @@ const EMPTY_INDICATOR: IndicatorSnapshot = {
   k: null, d: null, j: null,
   bollMid: null, bollUpper: null, bollLower: null, percentB: null,
   ma20Slope5: null, volumeRatio5: null,
+  obvMA20Ratio: null, upDownVolRatio: null,
   consecutiveUpDays: 0, consecutiveDownDays: 0,
   dayReturnPct: null, upperShadowPct: null, lowerShadowPct: null, amplitudePct: null,
   weekClose: null, weekMA5: null, weekMA10: null,
@@ -784,7 +821,7 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
       stage: "unknown", quantStage: "unknown", finalStage: "unknown",
       confidence: 0, confidenceLevel: "low", seasonScore: 50,
       scores: emptyScores(),
-      scoreBreakdown: { trend: emptyScores(), turn: emptyScores(), extension: emptyScores(), weekly: emptyScores() },
+      scoreBreakdown: { trend: emptyScores(), turn: emptyScores(), extension: emptyScores(), weekly: emptyScores(), volume: emptyScores() },
       turnSignals: EMPTY_TURN_SIGNALS,
       flags: {
         bullAlignment: false, bearAlignment: false,
@@ -1079,13 +1116,84 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
   }
 
   // ==========================================
+  // 5) VOLUME（上限 4）
+  // ==========================================
+  const volumeRaw = emptyScores();
+
+  // OBV vs OBV_MA20：资金净流向（2分）
+  {
+    const obvCurr = last(ctx.obvRaw);
+    const obvMA20Val = last(ctx.obvMA20);
+    if (isNum(obvCurr) && isNum(obvMA20Val) && obvMA20Val !== 0) {
+      if (obvCurr > obvMA20Val) {
+        if (isNum(ma20) && close > ma20) {
+          addScore(volumeRaw, "summer", 2);
+          notes.push("量: OBV>均线且价格强势 → summer+2");
+        } else {
+          addScore(volumeRaw, "spring", 2);
+          notes.push("量: OBV>均线但价格偏低 = 隐性吸筹 → spring+2");
+        }
+      } else {
+        if (isNum(ma20) && close < ma20) {
+          addScore(volumeRaw, "winter", 2);
+          notes.push("量: OBV<均线且价格弱势 → winter+2");
+        } else {
+          addScore(volumeRaw, "autumn", 2);
+          notes.push("量: OBV<均线但价格偏高 = 隐性派发 → autumn+2");
+        }
+      }
+    }
+  }
+
+  // 涨跌日成交量比（1分）
+  {
+    const udRatio = computeUpDownVolRatio(dailyBars);
+    if (isNum(udRatio)) {
+      if (udRatio > 1.5) {
+        const s = (isNum(ma20) && close > ma20) ? "summer" : "spring";
+        addScore(volumeRaw, s, 1);
+        notes.push(`量: 涨日均量/跌日均量=${udRatio.toFixed(2)}>1.5 → ${s}+1`);
+      } else if (udRatio < 0.67) {
+        const s = (isNum(ma20) && close < ma20) ? "winter" : "autumn";
+        addScore(volumeRaw, s, 1);
+        notes.push(`量: 涨日均量/跌日均量=${udRatio.toFixed(2)}<0.67 → ${s}+1`);
+      }
+    }
+  }
+
+  // OBV 背离（1分）
+  if (ctx.obvRaw.length >= 20) {
+    const recentObv = ctx.obvRaw.slice(-20);
+    const recentClose = dailyBars.slice(-20).map(b => b.close);
+    const obvMin = Math.min(...recentObv);
+    const obvMax = Math.max(...recentObv);
+    const closeMin = Math.min(...recentClose);
+    const closeMax = Math.max(...recentClose);
+    const closeRange = closeMax - closeMin;
+    const obvRange = obvMax - obvMin;
+    if (closeRange > 0 && obvRange > 0) {
+      const closePct = (close - closeMin) / closeRange;
+      const obvCurrVal = recentObv[recentObv.length - 1];
+      const obvPct = (obvCurrVal - obvMin) / obvRange;
+      if (closePct <= 0.2 && obvPct >= 0.6) {
+        addScore(volumeRaw, "spring", 1);
+        notes.push("量: 正背离(价低位OBV高位=底部吸筹) → spring+1");
+      } else if (closePct >= 0.8 && obvPct <= 0.4) {
+        addScore(volumeRaw, "autumn", 1);
+        notes.push("量: 负背离(价高位OBV低位=顶部派发) → autumn+1");
+      }
+    }
+  }
+
+  // ==========================================
   // 分组封顶 + 合计
   // ==========================================
   const trend = capScores(trendRaw, 6);
   const turn = capScores(turnRaw, 6);
   const extension = capScores(extensionRaw, 3);
   const weekly = capScores(weeklyRaw, 3);
-  const totalScores = sumScores(trend, turn, extension, weekly);
+  const volume = capScores(volumeRaw, 4);
+  const totalScores = sumScores(trend, turn, extension, weekly, volume);
 
   // ==========================================
   // 春/秋硬门控 — V2 压制逻辑
@@ -1158,7 +1266,7 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
     confidenceLevel,
     seasonScore,
     scores: cloneScores(totalScores),
-    scoreBreakdown: { trend, turn, extension, weekly },
+    scoreBreakdown: { trend, turn, extension, weekly, volume },
     turnSignals: signals,
     flags: {
       bullAlignment, bearAlignment,
