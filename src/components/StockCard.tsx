@@ -113,7 +113,7 @@ export const StockCard = ({ stock, classification, dailyBars, liveQuote, onClick
       )}
 
       {classification && classification.stage !== "unknown" && (() => {
-        const rating = computeCompositeRating(classification);
+        const rating = computeCompositeRating(classification, stock.symbol);
         const style = RATING_STYLE[rating.level];
         const mt = classification.mediumTermAnalysis;
         const vs = classification.volumeStage;

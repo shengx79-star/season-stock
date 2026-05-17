@@ -138,7 +138,7 @@ function rollBacktest(sym: string, daily: Candle[], weekly: Candle[]): HkPoint[]
     try {
       const cls    = classifyStock({ dailyBars: hist, weeklyBars: wHist });
       if (cls.stage === "unknown") continue;
-      const rating = computeCompositeRating(cls);
+      const rating = computeCompositeRating(cls, sym);
       const fut    = daily[i + EVAL_DAYS - 1]?.close;
       if (!fut) continue;
       const ret20 = (fut - daily[i - 1].close) / daily[i - 1].close;

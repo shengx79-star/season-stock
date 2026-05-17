@@ -28,9 +28,82 @@ function push(
   arr.push({ dimension, description, score });
 }
 
-// ── 三层评分 ─────────────────────────────────────────────────────────────────
+// ── 港股独立模型 ──────────────────────────────────────────────────────────────
+// 回测结论（52只/3.5年，6604个信号点）：
+//   港股是机构主导+跟随美港联动，主力做低吸高派而非趋势追踪。
+//   所有动量类信号（upTurnCount、蓄力、量能）在港股无效或反向。
+//   有效信号：冬季+0.64%*、秋→冬+1.32%*、长期空头背景+3.37%*（均值回归）
+//   无效信号：春→夏-1.85%*（最差）、长期多头-1.24%*（高位均值回归）
 
-export function computeCompositeRating(cls: ClassificationResult): CompositeRating {
+function computeHKRating(cls: ClassificationResult): CompositeRating {
+  const factors: RatingFactor[] = [];
+  const stage           = cls.stage;
+  const transitionState = cls.transitionState ?? null;
+  const longTermBg      = cls.longTermBackground ?? "震荡";
+
+  // ── HK 第一层：长期背景（反向评分，-2 ~ +2）──────────────────────────────
+  // 港股均值回归极强：空头背景 alpha=+3.37%，多头背景 alpha=-1.24%
+  const bgScoreMap: Record<LongTermBackground, number> = {
+    "长期空头": 2, "下行趋势": 1, "震荡": 0, "上行趋势": -1, "长期多头": -2,
+  };
+  const bgScore = bgScoreMap[longTermBg];
+  if (bgScore !== 0) {
+    push(factors, "长期背景",
+      bgScore > 0
+        ? `${longTermBg}，港股超跌均值回归（买入机会）`
+        : `${longTermBg}，港股高位均值回归（注意风险）`,
+      bgScore);
+  }
+
+  // ── HK 第二层：季节/转折（部分反向，-3 ~ +2）────────────────────────────
+  // 冬季最佳（低位+均值回归），春→夏最差（动量在港股反向）
+  let transScore = 0;
+  let transDesc  = "";
+
+  if (transitionState === "秋→冬") {
+    transScore = 2; transDesc = "秋→冬确认，港股低位买点（alpha=+1.32%）";
+  } else if (transitionState === "春→夏") {
+    transScore = -3; transDesc = "春→夏趋势确立，港股高位风险（alpha=-1.85%）";
+  } else if (transitionState === "夏→秋") {
+    transScore = -2; transDesc = "夏→秋转折，港股下行确认（alpha=-1.54%）";
+  } else if (transitionState === "冬→春") {
+    transScore = 0; transDesc = "冬→春转折，港股方向不明（alpha=-0.41%，中性）";
+  } else {
+    // 无明确转折，按当前阶段
+    if (stage === "winter") {
+      transScore = 2; transDesc = "冬季低位，港股均值回归买点（alpha=+0.64%）";
+    } else if (stage === "summer") {
+      transScore = -1; transDesc = "夏季高位，港股存在回调压力";
+    } else if (stage === "autumn") {
+      transScore = -1; transDesc = "秋季转弱，港股下行风险";
+    } else if (stage === "spring") {
+      transScore = 0; transDesc = "春季，港股方向中性（alpha=-0.23%，不显著）";
+    }
+  }
+
+  if (transDesc) push(factors, "转折时机", transDesc, transScore);
+
+  // HK 无量能和蓄力评分（回测证明全部失效或反向，移除）
+
+  // ── 汇总 & 评级 ─────────────────────────────────────────────────────────
+  const total = factors.reduce((s, f) => s + f.score, 0);
+
+  const LEVELS: RatingLevel[] = ["强烈买入", "积极买入", "观望", "谨慎", "回避"];
+  let level: RatingLevel;
+  if      (total >= 4)  level = "强烈买入";
+  else if (total >= 2)  level = "积极买入";
+  else if (total >= -1) level = "观望";
+  else if (total >= -3) level = "谨慎";
+  else                  level = "回避";
+
+  return { level, totalScore: total, factors };
+}
+
+// ── A 股 / 通用三层评分 ───────────────────────────────────────────────────────
+
+export function computeCompositeRating(cls: ClassificationResult, symbol?: string): CompositeRating {
+  // 港股 5 位数字（00700 格式）→ 走港股独立模型
+  if (symbol && /^0[0-9]{4}$/.test(symbol)) return computeHKRating(cls);
   const factors: RatingFactor[] = [];
 
   const stage           = cls.stage;
