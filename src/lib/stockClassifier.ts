@@ -9,6 +9,7 @@ export type Stage = PureStage | "unknown";
 export type ConfidenceLevel = "low" | "medium" | "high";
 export type TransitionState = "冬→春" | "春→夏" | "夏→秋" | "秋→冬" | null;
 export type LongTermBackground = "长期多头" | "上行趋势" | "震荡" | "下行趋势" | "长期空头";
+export type LongTermMomentum = "improving" | "stable" | "deteriorating";
 
 export interface Candle {
   date: string; // YYYY-MM-DD
@@ -131,6 +132,7 @@ export interface ClassificationResult {
   volumeStage: Stage;           // VOLUME 组主导季节，"unknown" 表示无明显信号
   transitionState: TransitionState;       // 当前所处的季节转折点（null = 无明确转折）
   longTermBackground: LongTermBackground; // 长期背景（基于周线 MA26/MA52）
+  longTermMomentum: LongTermMomentum;     // 背景动量（周线 MACD 是否在近 4 周翻转方向）
 }
 
 export interface ClassificationInput {
@@ -830,6 +832,20 @@ function computeLongTermBackground(
   return "震荡";
 }
 
+// =============================================
+// 长期背景动量识别（基于周线 MACD 金/死叉）
+// =============================================
+function computeLongTermMomentum(
+  ctx: ReturnType<typeof buildIndicatorContext>
+): LongTermMomentum {
+  // 周线 MACD 在近 4 周内金叉 → improving（背景开始改善，捕捉超跌反弹）
+  // 周线 MACD 在近 4 周内死叉 → deteriorating（背景开始恶化）
+  // 否则 → stable（方向未变）
+  if (crossedAboveWithin(ctx.weekDif, ctx.weekDea, 4)) return "improving";
+  if (crossedBelowWithin(ctx.weekDif, ctx.weekDea, 4)) return "deteriorating";
+  return "stable";
+}
+
 function computeAccumulationScore(dailyBars: Candle[], ma60Val: number | null): number {
   if (dailyBars.length < 60 || ma60Val === null || ma60Val === 0) return 0;
   const recent60 = dailyBars.slice(-60);
@@ -929,6 +945,7 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
       volumeStage: "unknown",
       transitionState: null,
       longTermBackground: "震荡",
+      longTermMomentum: "stable",
     };
   }
 
@@ -1359,6 +1376,7 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
     weeklyBullish,
   );
   const longTermBackground = computeLongTermBackground(ctx);
+  const longTermMomentum = computeLongTermMomentum(ctx);
 
   const mediumTermAnalysis = computeMediumTermAnalysis(
     dailyBars,
@@ -1392,6 +1410,7 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
     volumeStage,
     transitionState,
     longTermBackground,
+    longTermMomentum,
   };
 }
 

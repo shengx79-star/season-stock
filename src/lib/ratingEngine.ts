@@ -1,10 +1,9 @@
-import { ClassificationResult, Stage, TransitionState, LongTermBackground } from "./stockClassifier";
+import { ClassificationResult, Stage, TransitionState, LongTermBackground, LongTermMomentum } from "./stockClassifier";
 
 export type RatingLevel = "强烈买入" | "积极买入" | "观望" | "谨慎" | "回避";
 
 export interface RatingFactor {
-  // 长期背景不再评分，仅作天花板（见 computeLevel）
-  dimension: "转折时机" | "量能验证" | "蓄力信号";
+  dimension: "长期背景" | "转折时机" | "量能验证" | "蓄力信号";
   description: string;
   score: number;
 }
@@ -35,16 +34,29 @@ export function computeCompositeRating(cls: ClassificationResult): CompositeRati
   const factors: RatingFactor[] = [];
 
   const stage           = cls.stage;
-  const volumeStage     = cls.volumeStage;
   const transitionState = cls.transitionState ?? null;
   const longTermBg      = cls.longTermBackground ?? "震荡";
+  const longTermMom     = cls.longTermMomentum   ?? "stable";
   const upTurnCount     = cls.turnSignals?.upTurnCount   ?? 0;
   const downTurnCount   = cls.turnSignals?.downTurnCount ?? 0;
   const accScore        = cls.mediumTermAnalysis?.accumulationScore ?? 0;
+  const obvRatio        = cls.indicators?.obvMA20Ratio   ?? null;
+  const udRatio         = cls.indicators?.upDownVolRatio ?? null;
+  const close           = cls.indicators?.close          ?? null;
+  const ma20            = cls.indicators?.ma20           ?? null;
 
-  // ── 第一层：长期背景（纯过滤器，不评分）─────────────────────────────────
-  // 回测证明：A 股均值回归强，多头背景 alpha=-1.10%，空头背景 alpha=+2.63%。
-  // 正向评分会系统性拉反单调性。改为只设天花板，不主动加减分。
+  // ── 第一层：长期背景动量（-1 ~ +1）──────────────────────────────────────
+  // 静态背景状态在 A 股反向（均值回归），但"方向转变"有信号价值：
+  // 周线 MACD 近 4 周内金叉 = improving，空头背景开始反转 → 超跌反弹机会
+  const momScoreMap: Record<LongTermMomentum, number> = {
+    improving: 1, stable: 0, deteriorating: -1,
+  };
+  const momScore = momScoreMap[longTermMom];
+  if (momScore !== 0) {
+    push(factors, "长期背景",
+      longTermMom === "improving" ? `周线 MACD 金叉，背景改善（${longTermBg}）` : `周线 MACD 死叉，背景恶化（${longTermBg}）`,
+      momScore);
+  }
 
   // ── 第二层：转折时机（-3 ~ +3）──────────────────────────────────────────
   // 回测结论：春→夏 alpha=+1.57%（最强买点），冬→春 alpha=-0.25%（待确认）
@@ -86,29 +98,48 @@ export function computeCompositeRating(cls: ClassificationResult): CompositeRati
 
   if (transDesc) push(factors, "转折时机", transDesc, transScore);
 
-  // ── 第三层：量能验证（-1 ~ +1，叠加修正）───────────────────────────────
-  // 回测证明量能层独立 alpha 微弱；改为只在转折方向一致时 ±1 补充确认。
-  const priceBull = isBull(stage);
-  const priceBear = isBear(stage);
-  const volBull   = isBull(volumeStage);
-  const volBear   = isBear(volumeStage);
+  // ── 第三层：量能验证（-2 ~ +2）──────────────────────────────────────────
+  // 直接用 obvMA20Ratio（OBV/OBV_MA20）和 upDownVolRatio，比 volumeStage 粗粒度标签更精准。
+  // 隐性吸筹/派发（价量背离）作为独立信号（±2），无需等待转折信号。
+  if (obvRatio !== null && close !== null && ma20 !== null) {
+    const priceAboveMA20 = close > ma20;
+    const priceBelowMA20 = close < ma20;
+    const obvBull = obvRatio > 1.0;
+    const obvBear = obvRatio < 1.0;
 
-  if (volumeStage !== "unknown") {
     let volScore = 0;
     let volDesc  = "";
 
-    if (transScore > 0) {
-      if (volBull && priceBear) { volScore =  1; volDesc = "底部吸筹确认：资金已在低位建仓"; }
-      else if (volBull && priceBull) { volScore = 1; volDesc = "量价同步看多，趋势有效"; }
-    } else if (transScore < 0) {
-      if (volBear && priceBull) { volScore = -1; volDesc = "顶部派发确认：资金在高位撤出"; }
-      else if (volBear && priceBear) { volScore = -1; volDesc = "量价同步看空，下跌有效"; }
+    // 独立触发门槛提高到 1.15/0.85，避免弱信号误触发
+    const obvStrongBull = obvRatio > 1.15;
+    const obvStrongBear = obvRatio < 0.85;
+
+    if (obvStrongBull && priceBelowMA20) {
+      volScore = 2;  volDesc = `底部隐性吸筹：OBV/MA20=${obvRatio.toFixed(2)}，资金在价格弱势时净流入`;
+    } else if (obvStrongBear && priceAboveMA20) {
+      volScore = -2; volDesc = `顶部隐性派发：OBV/MA20=${obvRatio.toFixed(2)}，资金在价格强势时流出`;
+    } else if (obvBull && priceAboveMA20 && transScore > 0) {
+      volScore = 1;  volDesc = `量价同步看多：OBV/MA20=${obvRatio.toFixed(2)}`;
+    } else if (obvBear && priceBelowMA20 && transScore < 0) {
+      volScore = -1; volDesc = `量价同步看空：OBV/MA20=${obvRatio.toFixed(2)}`;
+    }
+
+    // upDownVolRatio 叠加确认（总分 cap ±2）
+    if (udRatio !== null) {
+      if (udRatio > 1.5 && transScore > 0 && volScore < 2) {
+        volScore = Math.min(2, volScore + 1);
+        volDesc += `，涨跌量比=${udRatio.toFixed(2)}（买盘强势）`;
+      } else if (udRatio < 0.67 && transScore < 0 && volScore > -2) {
+        volScore = Math.max(-2, volScore - 1);
+        volDesc += `，涨跌量比=${udRatio.toFixed(2)}（卖压沉重）`;
+      }
     }
 
     if (volScore !== 0) push(factors, "量能验证", volDesc, volScore);
   }
 
   // ── 蓄力信号（0 ~ +1，单向修正）────────────────────────────────────────
+  const priceBull = isBull(stage);
   if (accScore >= 70 && (priceBull || stage === "winter") && upTurnCount >= 2) {
     push(factors, "蓄力信号", `蓄力 ${accScore} 分 + ${upTurnCount} 个转折信号，底部结构扎实`, 1);
   } else if (accScore >= 50 && stage === "spring") {
@@ -117,20 +148,23 @@ export function computeCompositeRating(cls: ClassificationResult): CompositeRati
 
   // ── 汇总 & 评级 ─────────────────────────────────────────────────────────
   const total = factors.reduce((s, f) => s + f.score, 0);
-  const level = computeLevel(total, longTermBg);
+  const level = computeLevel(total, longTermBg, longTermMom);
 
   return { level, totalScore: total, factors };
 }
 
-function computeLevel(total: number, bg: LongTermBackground): RatingLevel {
-  // 长期背景仅作天花板，不主动评分
-  // 长期空头：弱势结构，最高给"谨慎"（不能强烈买入，但也不是"回避"）
-  // 下行趋势：谨慎反弹，最高给"积极买入"
-  const cap: Partial<Record<LongTermBackground, RatingLevel>> = {
-    "长期空头": "谨慎",
-    "下行趋势": "积极买入",
-  };
-  const ceiling = cap[bg];
+function computeLevel(total: number, bg: LongTermBackground, mom: LongTermMomentum = "stable"): RatingLevel {
+  // 长期背景天花板：
+  // 长期空头 + improving（周线 MACD 翻多）→ 超跌反弹机会，放开到"积极买入"
+  // 长期空头 + stable/deteriorating → 维持"谨慎"
+  // 下行趋势 → "积极买入"
+  let capLevel: RatingLevel | undefined;
+  if (bg === "长期空头") {
+    capLevel = mom === "improving" ? "积极买入" : "谨慎";
+  } else if (bg === "下行趋势") {
+    capLevel = "积极买入";
+  }
+  const ceiling = capLevel;
 
   const LEVELS: RatingLevel[] = ["强烈买入", "积极买入", "观望", "谨慎", "回避"];
   let level: RatingLevel;
