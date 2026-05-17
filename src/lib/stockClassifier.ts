@@ -7,6 +7,8 @@
 export type PureStage = "winter" | "spring" | "summer" | "autumn";
 export type Stage = PureStage | "unknown";
 export type ConfidenceLevel = "low" | "medium" | "high";
+export type TransitionState = "冬→春" | "春→夏" | "夏→秋" | "秋→冬" | null;
+export type LongTermBackground = "长期多头" | "上行趋势" | "震荡" | "下行趋势" | "长期空头";
 
 export interface Candle {
   date: string; // YYYY-MM-DD
@@ -126,7 +128,9 @@ export interface ClassificationResult {
   needsAI: boolean;
   indicators: IndicatorSnapshot;
   mediumTermAnalysis: MediumTermAnalysis;
-  volumeStage: Stage; // VOLUME 组主导季节，"unknown" 表示无明显信号
+  volumeStage: Stage;           // VOLUME 组主导季节，"unknown" 表示无明显信号
+  transitionState: TransitionState;       // 当前所处的季节转折点（null = 无明确转折）
+  longTermBackground: LongTermBackground; // 长期背景（基于周线 MA26/MA52）
 }
 
 export interface ClassificationInput {
@@ -497,6 +501,8 @@ function buildIndicatorContext(dailyBars: Candle[], weeklyBars: Candle[]) {
 
   const weekMA5 = sma(weekClose, 5);
   const weekMA10 = sma(weekClose, 10);
+  const weekMA26 = sma(weekClose, 26);
+  const weekMA52 = sma(weekClose, 52);
   const weekMacd = macd(weekClose, 12, 26, 9);
 
   return {
@@ -508,7 +514,7 @@ function buildIndicatorContext(dailyBars: Candle[], weeklyBars: Candle[]) {
     bollMid: mid, bollUpper: upper, bollLower: lower, percentB,
     ma20Slope5, volumeRatio5,
     obvRaw, obvMA20,
-    weekClose, weekMA5, weekMA10,
+    weekClose, weekMA5, weekMA10, weekMA26, weekMA52,
     weekDif: weekMacd.dif, weekDea: weekMacd.dea, weekHist: weekMacd.hist,
   };
 }
@@ -745,13 +751,98 @@ function classifyMonthly(monthlyBars: Candle[]): { stage: Stage; confidence: num
   return { stage: top1Stage, confidence };
 }
 
+// =============================================
+// 转折阶段识别
+// =============================================
+function computeTransitionState(
+  stage: PureStage,
+  signals: TurnSignals,
+  maAlign: number,
+  close: number | null,
+  ma60: number | null,
+  bias60: number | null,
+  weeklyBullish: boolean,
+): TransitionState {
+  const aboveMA60 = isNum(close) && isNum(ma60) && close > ma60;
+  const belowMA60 = isNum(close) && isNum(ma60) && close < ma60;
+  const { upTurnCount, downTurnCount, ma514Golden } = signals;
+
+  // 冬→春：最强买点。有至少 2 个上行转折信号，且价格仍在 MA60 下方或均线未完整排列
+  if (upTurnCount >= 2 && (stage === "spring" || stage === "winter")) {
+    if (belowMA60 || maAlign <= 1) return "冬→春";
+  }
+
+  // 夏→秋：最强卖点。夏季高位出现下行转折，或秋季但价格仍在 MA60 上方（早期秋）
+  if (downTurnCount >= 1) {
+    if (stage === "summer" && isNum(bias60) && bias60 > 8) return "夏→秋";
+    if (stage === "autumn" && aboveMA60) return "夏→秋";
+  }
+
+  // 秋→冬：趋势向下确认，MA60 下方
+  if (stage === "winter" && downTurnCount >= 2 && belowMA60) return "秋→冬";
+
+  // 春→夏：趋势刚刚确立（完整多头排列 + 周线确认 + 近期有金叉）
+  if (stage === "summer" && maAlign === 3 && weeklyBullish && ma514Golden) return "春→夏";
+
+  return null;
+}
+
+// =============================================
+// 长期背景识别（基于周线 MA26/MA52）
+// =============================================
+function computeLongTermBackground(
+  ctx: ReturnType<typeof buildIndicatorContext>
+): LongTermBackground {
+  const wClose = last(ctx.weekClose);
+  const wMA26  = last(ctx.weekMA26);
+  const wMA52  = last(ctx.weekMA52);
+
+  if (!isNum(wClose)) return "震荡";
+
+  // 有 MA52 时走完整逻辑
+  if (isNum(wMA52) && isNum(wMA26)) {
+    const ma52Ref = ctx.weekMA52.length >= 5 ? ctx.weekMA52[ctx.weekMA52.length - 5] : null;
+    const ma52Slope = isNum(ma52Ref) && ma52Ref > 0 ? (wMA52 - ma52Ref) / ma52Ref : 0;
+
+    if (wClose > wMA26 && wMA26 > wMA52) {
+      return ma52Slope > 0.005 ? "长期多头" : "上行趋势";
+    } else if (wClose < wMA26 && wMA26 < wMA52) {
+      return ma52Slope < -0.005 ? "长期空头" : "下行趋势";
+    } else if (wClose > wMA52) {
+      return "上行趋势";
+    } else if (wClose < wMA52) {
+      return "下行趋势";
+    }
+    return "震荡";
+  }
+
+  // 只有 MA26 时
+  if (isNum(wMA26)) {
+    const wMA10 = last(ctx.weekMA10);
+    if (wClose > wMA26 && isNum(wMA10) && wMA26 > wMA10) return "上行趋势";
+    if (wClose < wMA26 && isNum(wMA10) && wMA26 < wMA10) return "下行趋势";
+    return wClose > wMA26 ? "上行趋势" : "下行趋势";
+  }
+
+  // 数据不足，用 MA10 兜底
+  const wMA10 = last(ctx.weekMA10);
+  if (isNum(wMA10)) return wClose > wMA10 ? "上行趋势" : "下行趋势";
+  return "震荡";
+}
+
 function computeAccumulationScore(dailyBars: Candle[], ma60Val: number | null): number {
   if (dailyBars.length < 60 || ma60Val === null || ma60Val === 0) return 0;
   const recent60 = dailyBars.slice(-60);
 
   // Base Width: days within ±8% of MA60 → max 40 pts
   const baseCount = recent60.filter(b => Math.abs(b.close - ma60Val) / ma60Val <= 0.08).length;
-  const baseWidthScore = (baseCount / 60) * 40;
+  // MA60 斜率折扣：MA60 下行时"贴MA60横盘"是弱势整理而非底部蓄力
+  const closes = dailyBars.map(b => b.close);
+  const ma60Arr = sma(closes, 60);
+  const ma60Ref = ma60Arr.length >= 20 ? ma60Arr[ma60Arr.length - 20] : ma60Arr[0];
+  const ma60Slope20 = (ma60Ref && ma60Ref > 0) ? (ma60Val - ma60Ref) / ma60Ref : 0;
+  const baseWidthMult = ma60Slope20 > 0 ? 1.0 : ma60Slope20 > -0.01 ? 0.7 : 0.4;
+  const baseWidthScore = (baseCount / 60) * 40 * baseWidthMult;
 
   // Volatility Contraction: ATR20 / ATR60 → max 30 pts
   let atr20 = 0, atr60 = 0;
@@ -836,6 +927,8 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
       indicators: { ...EMPTY_INDICATOR, close: last(dailyBars)?.close ?? 0 },
       mediumTermAnalysis: DEFAULT_MEDIUM_TERM,
       volumeStage: "unknown",
+      transitionState: null,
+      longTermBackground: "震荡",
     };
   }
 
@@ -893,11 +986,11 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
   // 价格 vs MA20/MA60
   if (isNum(ma20) && isNum(ma60)) {
     if (close > ma20 && close > ma60) {
-      addScore(trendRaw, "summer", 2);
-      notes.push("趋势: 价格>MA20且>MA60 → summer+2");
+      addScore(trendRaw, "summer", 1);
+      notes.push("趋势: 价格>MA20且>MA60 → summer+1");
     } else if (close < ma20 && close < ma60) {
-      addScore(trendRaw, "winter", 2);
-      notes.push("趋势: 价格<MA20且<MA60 → winter+2");
+      addScore(trendRaw, "winter", 1);
+      notes.push("趋势: 价格<MA20且<MA60 → winter+1");
     } else if (close > ma20 && close < ma60) {
       addScore(trendRaw, "spring", 3);
       notes.push("趋势: 价格>MA20且<MA60（春季位置） → spring+3");
@@ -939,10 +1032,11 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
   // 2) TURN（上限 6）
   // ==========================================
 
-  if (signals.ma514Golden) { addScore(turnRaw, "spring", 3); notes.push("转折: MA5/14金叉 → spring+3"); }
-  if (signals.ma514Dead) { addScore(turnRaw, "autumn", 3); notes.push("转折: MA5/14死叉 → autumn+3"); }
-  if (signals.ma520Golden) { addScore(turnRaw, "spring", 2); notes.push("转折: MA5/20金叉 → spring+2"); }
-  if (signals.ma520Dead) { addScore(turnRaw, "autumn", 2); notes.push("转折: MA5/20死叉 → autumn+2"); }
+  // MA 金叉/死叉去重：ma514 和 ma520 几乎同时触发，只取最强一个
+  const maCrossSpring = signals.ma514Golden ? 3 : signals.ma520Golden ? 2 : 0;
+  const maCrossAutumn = signals.ma514Dead ? 3 : signals.ma520Dead ? 2 : 0;
+  if (maCrossSpring > 0) { addScore(turnRaw, "spring", maCrossSpring); notes.push(`转折: MA金叉(最强) → spring+${maCrossSpring}`); }
+  if (maCrossAutumn > 0) { addScore(turnRaw, "autumn", maCrossAutumn); notes.push(`转折: MA死叉(最强) → autumn+${maCrossAutumn}`); }
   if (signals.macdGolden) { addScore(turnRaw, "spring", 3); notes.push("转折: MACD金叉 → spring+3"); }
   if (signals.macdDead) { addScore(turnRaw, "autumn", 3); notes.push("转折: MACD死叉 → autumn+3"); }
   if (signals.priceReclaimMA20) { addScore(turnRaw, "spring", 2); notes.push("转折: 价格上穿MA20 → spring+2"); }
@@ -1033,10 +1127,11 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
     }
   }
 
-  // V2: BIAS60 > 15 → autumn+2（无需 turn_count）
+  // BIAS60 > 15%：完整多头排列中属正常延伸，降权为 +1；非完整排列才是强见顶信号 +2
   if (isNum(bias60) && bias60 > 15) {
-    addScore(extensionRaw, "autumn", 2);
-    notes.push("扩展: BIAS60>15%（强信号） → autumn+2");
+    const bias60Pts = maAlign === 3 ? 1 : 2;
+    addScore(extensionRaw, "autumn", bias60Pts);
+    notes.push(`扩展: BIAS60>15%${maAlign === 3 ? "(强趋势折半)" : "(强信号)"} → autumn+${bias60Pts}`);
   }
 
   // 连续涨跌 (V2: close vs open)
@@ -1257,6 +1352,14 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
   const volTops = topNStages(volume, 1);
   const volumeStage: Stage = (volTops.length > 0 && volTops[0][1] > 0) ? volTops[0][0] : "unknown";
 
+  // 转折阶段 & 长期背景
+  const transitionState = computeTransitionState(
+    quantStage, signals, maAlign,
+    indicators.close, indicators.ma60, indicators.bias60,
+    weeklyBullish,
+  );
+  const longTermBackground = computeLongTermBackground(ctx);
+
   const mediumTermAnalysis = computeMediumTermAnalysis(
     dailyBars,
     indicators.ma60,
@@ -1287,6 +1390,8 @@ export function classifyStock(input: ClassificationInput): ClassificationResult 
     indicators,
     mediumTermAnalysis,
     volumeStage,
+    transitionState,
+    longTermBackground,
   };
 }
 
