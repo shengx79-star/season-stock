@@ -3,7 +3,8 @@ import { ClassificationResult, Stage, TransitionState, LongTermBackground } from
 export type RatingLevel = "强烈买入" | "积极买入" | "观望" | "谨慎" | "回避";
 
 export interface RatingFactor {
-  dimension: "长期背景" | "转折时机" | "量能验证" | "蓄力信号";
+  // 长期背景不再评分，仅作天花板（见 computeLevel）
+  dimension: "转折时机" | "量能验证" | "蓄力信号";
   description: string;
   score: number;
 }
@@ -33,87 +34,81 @@ function push(
 export function computeCompositeRating(cls: ClassificationResult): CompositeRating {
   const factors: RatingFactor[] = [];
 
-  const stage            = cls.stage;
-  const volumeStage      = cls.volumeStage;
-  const transitionState  = cls.transitionState  ?? null;
-  const longTermBg       = cls.longTermBackground ?? "震荡";
-  const upTurnCount      = cls.turnSignals?.upTurnCount   ?? 0;
-  const downTurnCount    = cls.turnSignals?.downTurnCount ?? 0;
-  const accScore         = cls.mediumTermAnalysis?.accumulationScore ?? 0;
+  const stage           = cls.stage;
+  const volumeStage     = cls.volumeStage;
+  const transitionState = cls.transitionState ?? null;
+  const longTermBg      = cls.longTermBackground ?? "震荡";
+  const upTurnCount     = cls.turnSignals?.upTurnCount   ?? 0;
+  const downTurnCount   = cls.turnSignals?.downTurnCount ?? 0;
+  const accScore        = cls.mediumTermAnalysis?.accumulationScore ?? 0;
 
-  // ── 第一层：长期背景（-2 ~ +2）──────────────────────────────────────────
-  // 决定评级天花板。长期空头背景下短期再强也最多给"观望"。
-  const bgScoreMap: Record<LongTermBackground, number> = {
-    "长期多头": 2, "上行趋势": 1, "震荡": 0, "下行趋势": -1, "长期空头": -2,
-  };
-  const bgScore = bgScoreMap[longTermBg];
-  if (bgScore !== 0) {
-    push(factors, "长期背景", `周线结构：${longTermBg}`, bgScore);
-  }
+  // ── 第一层：长期背景（纯过滤器，不评分）─────────────────────────────────
+  // 回测证明：A 股均值回归强，多头背景 alpha=-1.10%，空头背景 alpha=+2.63%。
+  // 正向评分会系统性拉反单调性。改为只设天花板，不主动加减分。
 
   // ── 第二层：转折时机（-3 ~ +3）──────────────────────────────────────────
-  // 回测证明：转折点（冬→春、夏→秋）是 Alpha 最高的信号。
-  // 延伸期（夏盛期、冬深期）在 A 股均值回归特性下不加分也不减分。
+  // 回测结论：春→夏 alpha=+1.57%（最强买点），冬→春 alpha=-0.25%（待确认）
+  //           夏→秋 alpha=-1.33%（最强卖点）
   let transScore = 0;
   let transDesc  = "";
 
-  if (transitionState === "冬→春") {
+  if (transitionState === "春→夏") {
     transScore = 3;
-    transDesc  = "冬→春转折，价格低位出现上行信号（最强买点）";
+    transDesc  = "春→夏趋势确立，动量加速（最强买点）";
+  } else if (transitionState === "冬→春") {
+    if (upTurnCount >= 3) {
+      transScore = 2; transDesc = "冬→春转折，多重信号确认";
+    } else {
+      transScore = 1; transDesc = "冬→春转折初现，待确认";
+    }
   } else if (transitionState === "夏→秋") {
     transScore = -3;
-    transDesc  = "夏→秋转折，高位出现下行信号（最强卖点）";
-  } else if (transitionState === "春→夏") {
-    transScore = 1;
-    transDesc  = "春→夏趋势确立，持仓为主";
+    transDesc  = "夏→秋转折，高位下行信号（最强卖点）";
   } else if (transitionState === "秋→冬") {
     transScore = -1;
-    transDesc  = "秋→冬确认，趋势向下，等待止跌";
+    transDesc  = "秋→冬确认，趋势向下";
   } else {
-    // 无明确转折，按当前阶段给较保守的分
+    // 无明确转折，按当前阶段给保守分
     if (stage === "spring" && upTurnCount >= 2) {
-      transScore = 2; transDesc = "春季确认（双转折信号）";
+      transScore = 1; transDesc = "春季持续，转折信号多次确认";
     } else if (stage === "spring") {
       transScore = 1; transDesc = "春季启动（待确认）";
     } else if (stage === "summer") {
       transScore = 0; transDesc = "夏季延续（持仓观察，非新买点）";
     } else if (stage === "autumn" && downTurnCount >= 2) {
-      transScore = -2; transDesc = "秋季确认（双转折信号）";
+      transScore = -2; transDesc = "秋季深度确认";
     } else if (stage === "autumn") {
       transScore = -1; transDesc = "秋季转弱";
     } else if (stage === "winter") {
-      transScore = 0; transDesc = "冬季调整（A 股均值回归，观望）";
+      transScore = 0; transDesc = "冬季调整（A 股均值回归，观望而非回避）";
     }
   }
 
   if (transDesc) push(factors, "转折时机", transDesc, transScore);
 
-  // ── 第三层：量能验证（-2 ~ +2）──────────────────────────────────────────
-  // 量价关系是独立信号源，最强信号是"价格弱但资金在买"和"价格强但资金在跑"。
+  // ── 第三层：量能验证（-1 ~ +1，叠加修正）───────────────────────────────
+  // 回测证明量能层独立 alpha 微弱；改为只在转折方向一致时 ±1 补充确认。
   const priceBull = isBull(stage);
   const priceBear = isBear(stage);
   const volBull   = isBull(volumeStage);
   const volBear   = isBear(volumeStage);
 
-  let volScore = 0;
-  let volDesc  = "";
+  if (volumeStage !== "unknown") {
+    let volScore = 0;
+    let volDesc  = "";
 
-  if (volBull && priceBear) {
-    volScore = 2;  volDesc = "底部隐性吸筹：价格弱但资金持续净流入";
-  } else if (volBear && priceBull) {
-    volScore = -2; volDesc = "顶部隐性派发：价格强但资金已悄然流出";
-  } else if (volBull && priceBull) {
-    volScore = 1;  volDesc = "量价同步看多";
-  } else if (volBear && priceBear) {
-    volScore = -1; volDesc = "量价同步看空";
-  }
+    if (transScore > 0) {
+      if (volBull && priceBear) { volScore =  1; volDesc = "底部吸筹确认：资金已在低位建仓"; }
+      else if (volBull && priceBull) { volScore = 1; volDesc = "量价同步看多，趋势有效"; }
+    } else if (transScore < 0) {
+      if (volBear && priceBull) { volScore = -1; volDesc = "顶部派发确认：资金在高位撤出"; }
+      else if (volBear && priceBear) { volScore = -1; volDesc = "量价同步看空，下跌有效"; }
+    }
 
-  if (volScore !== 0 && volumeStage !== "unknown") {
-    push(factors, "量能验证", volDesc, volScore);
+    if (volScore !== 0) push(factors, "量能验证", volDesc, volScore);
   }
 
   // ── 蓄力信号（0 ~ +1，单向修正）────────────────────────────────────────
-  // 仅在看多方向有底部蓄力时补充 +1，不做空头方向的对称惩罚。
   if (accScore >= 70 && (priceBull || stage === "winter") && upTurnCount >= 2) {
     push(factors, "蓄力信号", `蓄力 ${accScore} 分 + ${upTurnCount} 个转折信号，底部结构扎实`, 1);
   } else if (accScore >= 50 && stage === "spring") {
@@ -122,18 +117,18 @@ export function computeCompositeRating(cls: ClassificationResult): CompositeRati
 
   // ── 汇总 & 评级 ─────────────────────────────────────────────────────────
   const total = factors.reduce((s, f) => s + f.score, 0);
-
-  // 长期空头背景下，正向评级上限为"观望"（即使转折信号强也不给买入）
   const level = computeLevel(total, longTermBg);
 
   return { level, totalScore: total, factors };
 }
 
 function computeLevel(total: number, bg: LongTermBackground): RatingLevel {
-  // 长期背景对评级的天花板限制
+  // 长期背景仅作天花板，不主动评分
+  // 长期空头：弱势结构，最高给"谨慎"（不能强烈买入，但也不是"回避"）
+  // 下行趋势：谨慎反弹，最高给"积极买入"
   const cap: Partial<Record<LongTermBackground, RatingLevel>> = {
-    "长期空头": "观望",   // 长期空头：最高只给观望
-    "下行趋势": "积极买入", // 下行趋势：最高给积极买入（谨慎买反弹）
+    "长期空头": "谨慎",
+    "下行趋势": "积极买入",
   };
   const ceiling = cap[bg];
 
@@ -145,11 +140,10 @@ function computeLevel(total: number, bg: LongTermBackground): RatingLevel {
   else if (total >= -3) level = "谨慎";
   else                  level = "回避";
 
-  // 应用天花板
   if (ceiling) {
     const ceilIdx  = LEVELS.indexOf(ceiling);
     const levelIdx = LEVELS.indexOf(level);
-    if (levelIdx < ceilIdx) level = ceiling; // 如果当前评级比天花板更激进，降至天花板
+    if (levelIdx < ceilIdx) level = ceiling;
   }
 
   return level;

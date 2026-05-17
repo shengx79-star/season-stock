@@ -149,9 +149,9 @@ function rollBacktest(sym: string, daily: Candle[], weekly: Candle[]): BtPoint[]
       if (!fut) continue;
       const ret20 = (fut - daily[i - 1].close) / daily[i - 1].close;
 
-      const bgScore    = rating.factors.find(f => f.dimension === "长期背景")?.score    ?? 0;
-      const transScore = rating.factors.find(f => f.dimension === "转折时机")?.score    ?? 0;
-      const volScore   = rating.factors.find(f => f.dimension === "量能验证")?.score    ?? 0;
+      const bgScore    = 0; // 长期背景已改为纯过滤器，不参与评分
+      const transScore = rating.factors.find(f => f.dimension === "转折时机")?.score ?? 0;
+      const volScore   = rating.factors.find(f => f.dimension === "量能验证")?.score ?? 0;
 
       points.push({
         symbol: sym,
@@ -415,12 +415,8 @@ describe("择时 Alpha 回测（扩大版，50只/3.5年）", () => {
         expect(winterSpringAlpha.mean).toBeGreaterThan(summerAutumnAlpha.mean);
       }
 
-      // 长期背景有效性：多头背景 alpha > 空头背景 alpha
-      const bullBgAlpha = stats(all.filter(bullBg).map((p) => p.alpha));
-      const bearBgAlpha = stats(all.filter(bearBg).map((p) => p.alpha));
-      if (bullBgAlpha.n > 0 && bearBgAlpha.n > 0) {
-        expect(bullBgAlpha.mean).toBeGreaterThan(bearBgAlpha.mean);
-      }
+      // 注：A 股均值回归效应使"长期空头"背景票短期内容易反弹（alpha=+2.63%）
+      // longTermBackground 仅作评级天花板，不做 alpha 方向断言。
     },
     300_000  // 5 分钟超时
   );
