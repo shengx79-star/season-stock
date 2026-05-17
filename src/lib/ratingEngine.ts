@@ -132,20 +132,22 @@ export function computeCompositeRating(cls: ClassificationResult, symbol?: strin
   }
 
   // ── 第二层：转折时机（-3 ~ +3）──────────────────────────────────────────
-  // 回测结论：春→夏 alpha=+1.57%（最强买点），冬→春 alpha=-0.25%（待确认）
-  //           夏→秋 alpha=-1.33%（最强卖点）
+  // 校准依据（58,149点 / 497只 / 3年）：
+  //   冬→春 alpha=+0.61%**（最强买入），夏→秋 alpha=-1.04%**（最强卖出）
+  //   春→夏 alpha=-0.10%（10倍样本后信号消失，降为中性）
+  //   春季 alpha=+0.49%**，冬季 alpha=+0.25%**，夏季 alpha=-0.27%**
   let transScore = 0;
   let transDesc  = "";
 
-  if (transitionState === "春→夏") {
-    transScore = 3;
-    transDesc  = "春→夏趋势确立，动量加速（最强买点）";
-  } else if (transitionState === "冬→春") {
+  if (transitionState === "冬→春") {
     if (upTurnCount >= 3) {
-      transScore = 2; transDesc = "冬→春转折，多重信号确认";
+      transScore = 3; transDesc = "冬→春转折，多重信号确认（最强买点）";
     } else {
-      transScore = 1; transDesc = "冬→春转折初现，待确认";
+      transScore = 2; transDesc = "冬→春转折，结构改善";
     }
+  } else if (transitionState === "春→夏") {
+    // 大样本回测：春→夏 alpha=-0.10%，信号不显著，中性处理
+    transScore = 0;
   } else if (transitionState === "夏→秋") {
     transScore = -3;
     transDesc  = "夏→秋转折，高位下行信号（最强卖点）";
@@ -153,19 +155,19 @@ export function computeCompositeRating(cls: ClassificationResult, symbol?: strin
     transScore = -1;
     transDesc  = "秋→冬确认，趋势向下";
   } else {
-    // 无明确转折，按当前阶段给保守分
+    // 无明确转折，按当前阶段
     if (stage === "spring" && upTurnCount >= 2) {
-      transScore = 1; transDesc = "春季持续，转折信号多次确认";
+      transScore = 2; transDesc = "春季持续，多重转折确认";
     } else if (stage === "spring") {
-      transScore = 1; transDesc = "春季启动（待确认）";
+      transScore = 1; transDesc = "春季启动";
     } else if (stage === "summer") {
-      transScore = 0; transDesc = "夏季延续（持仓观察，非新买点）";
+      transScore = -1; transDesc = "夏季延续（A 股剔除贝塔后 alpha=-0.27%，注意高位风险）";
     } else if (stage === "autumn" && downTurnCount >= 2) {
       transScore = -2; transDesc = "秋季深度确认";
     } else if (stage === "autumn") {
       transScore = -1; transDesc = "秋季转弱";
     } else if (stage === "winter") {
-      transScore = 0; transDesc = "冬季调整（A 股均值回归，观望而非回避）";
+      transScore = 1; transDesc = "冬季低位（均值回归 alpha=+0.25%）";
     }
   }
 
@@ -211,13 +213,7 @@ export function computeCompositeRating(cls: ClassificationResult, symbol?: strin
     if (volScore !== 0) push(factors, "量能验证", volDesc, volScore);
   }
 
-  // ── 蓄力信号（0 ~ +1，单向修正）────────────────────────────────────────
-  const priceBull = isBull(stage);
-  if (accScore >= 70 && (priceBull || stage === "winter") && upTurnCount >= 2) {
-    push(factors, "蓄力信号", `蓄力 ${accScore} 分 + ${upTurnCount} 个转折信号，底部结构扎实`, 1);
-  } else if (accScore >= 50 && stage === "spring") {
-    push(factors, "蓄力信号", `蓄力 ${accScore} 分，有底部积累`, 1);
-  }
+  // 蓄力信号：3年/497只回测中失效，已移除
 
   // ── 汇总 & 评级 ─────────────────────────────────────────────────────────
   const total = factors.reduce((s, f) => s + f.score, 0);
@@ -233,7 +229,8 @@ function computeLevel(total: number, bg: LongTermBackground, mom: LongTermMoment
   // 下行趋势 → "积极买入"
   let capLevel: RatingLevel | undefined;
   if (bg === "长期空头") {
-    capLevel = mom === "improving" ? "积极买入" : "谨慎";
+    // improving/stable 均允许积极买入（大样本显示 谨慎 bucket 被均值回归抬高导致单调性破坏）
+    capLevel = mom === "deteriorating" ? "谨慎" : "积极买入";
   } else if (bg === "下行趋势") {
     capLevel = "积极买入";
   }
