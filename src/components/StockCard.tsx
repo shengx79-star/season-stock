@@ -7,7 +7,7 @@ import { TrendingUp, TrendingDown, X, Briefcase } from "lucide-react";
 import { Season } from "@/lib/stockData";
 import { detectMarketLabel, getMarketColorClass } from "@/lib/marketDetect";
 import { RealtimeQuote } from "@/hooks/useRealtimePrices";
-import { computeCompositeRating, RATING_STYLE } from "@/lib/ratingEngine";
+import { computeCompositeRating, RATING_STYLE, MarketRegime } from "@/lib/ratingEngine";
 
 const SEASON_LABEL: Record<string, string> = { spring: "春", summer: "夏", autumn: "秋", winter: "冬" };
 const SEASON_COLOR: Record<string, string> = {
@@ -22,12 +22,13 @@ interface StockCardProps {
   classification?: ClassificationResult;
   dailyBars?: Candle[];
   liveQuote?: RealtimeQuote;
+  regime?: MarketRegime;
   onClick: (stock: Stock) => void;
   onDelete?: (symbol: string) => void;
   onTogglePortfolio?: (symbol: string, value: boolean) => void;
 }
 
-export const StockCard = ({ stock, classification, dailyBars, liveQuote, onClick, onDelete, onTogglePortfolio }: StockCardProps) => {
+export const StockCard = ({ stock, classification, dailyBars, liveQuote, regime, onClick, onDelete, onTogglePortfolio }: StockCardProps) => {
   const livePrice = liveQuote?.price ?? stock.price;
   const liveChange = liveQuote?.changePercent ?? stock.changePercent;
   const isUp = liveChange >= 0;
@@ -113,7 +114,7 @@ export const StockCard = ({ stock, classification, dailyBars, liveQuote, onClick
       )}
 
       {classification && classification.stage !== "unknown" && (() => {
-        const rating = computeCompositeRating(classification, stock.symbol);
+        const rating = computeCompositeRating(classification, stock.symbol, regime, stock.sector);
         const style = RATING_STYLE[rating.level];
         const mt = classification.mediumTermAnalysis;
         const vs = classification.volumeStage;

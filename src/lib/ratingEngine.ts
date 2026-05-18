@@ -1,9 +1,10 @@
 import { ClassificationResult, Stage, TransitionState, LongTermBackground, LongTermMomentum } from "./stockClassifier";
 
 export type RatingLevel = "强烈买入" | "积极买入" | "观望" | "谨慎" | "回避";
+export type MarketRegime = "牛市" | "熊市" | "震荡";
 
 export interface RatingFactor {
-  dimension: "长期背景" | "转折时机" | "量能验证" | "蓄力信号";
+  dimension: "长期背景" | "转折时机" | "量能验证" | "制度板块";
   description: string;
   score: number;
 }
@@ -12,6 +13,38 @@ export interface CompositeRating {
   level: RatingLevel;
   totalScore: number;
   factors: RatingFactor[];
+}
+
+// ── 市场制度 ──────────────────────────────────────────────────────────────────
+// 从股票池所有分类的 longTermBackground 分布推断当前市场制度
+// 多头比例 > 55% → 牛市；空头比例 > 55% → 熊市；否则 → 震荡
+export function computeMarketRegime(clsList: ClassificationResult[]): MarketRegime {
+  let bull = 0, bear = 0;
+  for (const cls of clsList) {
+    const bg = cls.longTermBackground ?? "震荡";
+    if (bg === "长期多头" || bg === "上行趋势") bull++;
+    if (bg === "长期空头" || bg === "下行趋势") bear++;
+  }
+  const total = bull + bear;
+  if (total < 5) return "震荡";
+  if (bull / total > 0.55) return "牛市";
+  if (bear / total > 0.55) return "熊市";
+  return "震荡";
+}
+
+// ── 板块标准化 ────────────────────────────────────────────────────────────────
+// 将数据库中的细粒度板块字段映射到 signal-atlas 的 7 大板块
+export function normalizeSector(rawSector: string): string {
+  if (!rawSector) return "其他";
+  const s = rawSector;
+  if (/银行|证券|保险|金融|信托|基金|期货/.test(s)) return "金融";
+  if (/白酒|食品|饮料|消费|家电|家居|零售|传媒|娱乐|文具|猪|养殖|乳品|肉/.test(s)) return "消费";
+  if (/医药|生物医药|医疗|器械|CRO|制药/.test(s)) return "医药";
+  if (/半导体|芯片|科技|互联网|软件|通信|AI|人工智能|面板|显示|电子|计算机/.test(s)) return "科技";
+  if (/新能源|光伏|风电|锂|储能|氢能|充电|电池/.test(s)) return "新能源";
+  if (/煤炭|石油|石化|化工|矿|钢铁|地产|建筑|建材|水泥|玻璃|铜|铝|铁|黄金|有色|电力/.test(s)) return "周期";
+  if (/机械|汽车|零部件|轮胎|航空|航运|物流|军工|国防|船舶|设备|电力设备/.test(s)) return "工业";
+  return "其他";
 }
 
 // ── 工具 ─────────────────────────────────────────────────────────────────────
@@ -101,8 +134,13 @@ function computeHKRating(cls: ClassificationResult): CompositeRating {
 
 // ── A 股 / 通用三层评分 ───────────────────────────────────────────────────────
 
-export function computeCompositeRating(cls: ClassificationResult, symbol?: string): CompositeRating {
-  // 港股 5 位数字（00700 格式）→ 走港股独立模型
+export function computeCompositeRating(
+  cls: ClassificationResult,
+  symbol?: string,
+  regime?: MarketRegime,
+  sector?: string,
+): CompositeRating {
+  // 港股 5 位数字（00700 格式）→ 走港股独立模型（制度×板块调整暂不适用于港股）
   if (symbol && /^0[0-9]{4}$/.test(symbol)) return computeHKRating(cls);
   const factors: RatingFactor[] = [];
 
@@ -212,7 +250,55 @@ export function computeCompositeRating(cls: ClassificationResult, symbol?: strin
     if (volScore !== 0) push(factors, "量能验证", volDesc, volScore);
   }
 
-  // 蓄力信号：3年/497只回测中失效，已移除
+  // ── 第四层：制度×板块调整（-1 ~ +1）────────────────────────────────────────
+  // 基于 76,495 点×860 只信号矩阵回测（signal-atlas-v1）
+  // 只在方向明确时调整，±1 封顶，避免覆盖基础信号
+  if (regime && sector) {
+    const preTotal = factors.reduce((s, f) => s + f.score, 0);
+    const isBuyCtx  = preTotal >= 2;
+    const isSellCtx = preTotal <= -2;
+    const sec = normalizeSector(sector);
+
+    let regScore = 0;
+    let regDesc  = "";
+
+    if (regime === "熊市") {
+      // 熊市×金融/科技/消费：买入信号均值回归最强（+2.2~2.9%**）
+      if (isBuyCtx && (sec === "金融" || sec === "科技" || sec === "消费")) {
+        regScore = 1;
+        regDesc  = `熊市×${sec}：底部买入信号强化（均值回归 alpha +2.2~2.9%**）`;
+      }
+      // 熊市×科技：卖出信号也显著（-4.14%*），双向有效
+      if (isSellCtx && sec === "科技") {
+        regScore = -1;
+        regDesc  = "熊市×科技：卖出信号强化（alpha -4.14%*）";
+      }
+      // 熊市×工业：买入轻微加分（+0.91%**，t=5.68）
+      if (isBuyCtx && sec === "工业" && regScore === 0) {
+        regScore = 1;
+        regDesc  = "熊市×工业：买入信号有效（alpha +0.91%**）";
+      }
+    } else if (regime === "牛市") {
+      // 牛市×金融：买入信号反向（alpha -1.30%**），需降级
+      if (isBuyCtx && sec === "金融") {
+        regScore = -1;
+        regDesc  = "牛市×金融：买入信号反向（alpha -1.30%**），降分";
+      }
+      // 牛市×周期：卖出信号在牛市反向（alpha +2.77%*），不宜追空
+      if (isSellCtx && sec === "周期") {
+        regScore = 1;
+        regDesc  = "牛市×周期：卖出信号牛市中反向（alpha +2.77%*），谨慎做空";
+      }
+    } else if (regime === "震荡") {
+      // 震荡×周期：买入信号显著失效（alpha -2.47%**）
+      if (isBuyCtx && sec === "周期") {
+        regScore = -1;
+        regDesc  = "震荡×周期：买入信号失效（alpha -2.47%**）";
+      }
+    }
+
+    if (regScore !== 0) push(factors, "制度板块", regDesc, regScore);
+  }
 
   // ── 汇总 & 评级 ─────────────────────────────────────────────────────────
   const total = factors.reduce((s, f) => s + f.score, 0);

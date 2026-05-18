@@ -13,6 +13,7 @@ import { useStockPool } from "@/hooks/useStockPool";
 import { lookupStock, searchStockByName, StockSuggestion } from "@/lib/stockLookup";
 import { detectMarketFromTag, getMarketColorClass } from "@/lib/marketDetect";
 import { useRealtimePrices } from "@/hooks/useRealtimePrices";
+import { computeMarketRegime } from "@/lib/ratingEngine";
 import { toast } from "sonner";
 
 const seasonFilters: (Season | "all")[] = ["all", "spring", "summer", "autumn", "winter"];
@@ -64,6 +65,11 @@ const Index = () => {
   })();
 
   const { results: classifications, dailyBarsMap } = useStockClassifications(searchResults);
+
+  const marketRegime = useMemo(
+    () => computeMarketRegime(Array.from(classifications.values())),
+    [classifications],
+  );
 
   const poolSymbols = useMemo(() => stockPool.map(s => s.symbol), [stockPool]);
   const { quotes: liveQuotes } = useRealtimePrices(poolSymbols);
@@ -278,6 +284,7 @@ const Index = () => {
                   classification={classifications.get(stock.symbol)}
                   dailyBars={dailyBarsMap.get(stock.symbol)}
                   liveQuote={liveQuotes.get(stock.symbol)}
+                  regime={marketRegime}
                   onClick={handleStockClick}
                   onDelete={handleDeleteStock}
                   onTogglePortfolio={handleTogglePortfolio}
