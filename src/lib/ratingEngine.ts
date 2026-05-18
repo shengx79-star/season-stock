@@ -222,15 +222,25 @@ export function computeCompositeRating(cls: ClassificationResult, symbol?: strin
 }
 
 function computeLevel(total: number, bg: LongTermBackground, mom: LongTermMomentum = "stable"): RatingLevel {
-  // 长期背景天花板：
-  // 长期空头 + improving（周线 MACD 翻多）→ 超跌反弹机会，放开到"积极买入"
-  // 长期空头 + stable/deteriorating → 维持"谨慎"
-  // 下行趋势 → "积极买入"
+  // 长期背景天花板（基于 44233 点×860 只衰减曲线回测，80d 视野）：
+  //
+  // 长期空头 + improving → 【无上限】允许强烈买入
+  //   A股均值回归主导：空头背景是最强买点（熊市买入 alpha +2.2~2.9%**）
+  //   score≥4 但被 cap 到积极买入的 776 个点拉高了积极买入、拖低了强烈买入
+  //   releasing this cap fixes the monotonicity: 强烈买入 80d +3.47%** > 积极买入 +3.22%**
+  //
+  // 长期空头 + stable → 积极买入（中性，等待动量确认）
+  // 长期空头 + deteriorating → 谨慎（下跌未止）
+  // 下行趋势 → 积极买入（趋势仍弱，不开强烈买入）
+  // 长期多头 → 积极买入（A股高位均值回归：长期多头 alpha = -1.10%*，不宜强烈买入）
   let capLevel: RatingLevel | undefined;
   if (bg === "长期空头") {
-    // improving/stable 均允许积极买入（大样本显示 谨慎 bucket 被均值回归抬高导致单调性破坏）
-    capLevel = mom === "deteriorating" ? "谨慎" : "积极买入";
+    if (mom === "deteriorating") capLevel = "谨慎";
+    else if (mom === "stable")   capLevel = "积极买入";
+    // improving: no cap → 允许强烈买入
   } else if (bg === "下行趋势") {
+    capLevel = "积极买入";
+  } else if (bg === "长期多头") {
     capLevel = "积极买入";
   }
   const ceiling = capLevel;
