@@ -62,11 +62,15 @@ function push(
 }
 
 // ── 港股独立模型 ──────────────────────────────────────────────────────────────
-// 回测结论（52只/3.5年，6604个信号点）：
+// 回测结论（329只/3年，29,194点，多周期衰减曲线）：
 //   港股是机构主导+跟随美港联动，主力做低吸高派而非趋势追踪。
 //   所有动量类信号（upTurnCount、蓄力、量能）在港股无效或反向。
-//   有效信号：冬季+0.64%*、秋→冬+1.32%*、长期空头背景+3.37%*（均值回归）
-//   无效信号：春→夏-1.85%*（最差）、长期多头-1.24%*（高位均值回归）
+//   Layer 2 校准（v2，2026-05-18）：
+//     秋→冬 +1（原+2，2w短期实为-2.49%**，32w+20%但不显著，降低置信）
+//     春→夏 -2（原-3，全周期不显著，-3无数据支撑）
+//     夏→秋 -2（保持，32w -19.22%** 确认）
+//     冬季无转折 +1（原+2，全周期不显著）
+//     秋季无转折 -2（原-1，4w -3.80%*、16w -12.07%*，低估）
 
 function computeHKRating(cls: ClassificationResult): CompositeRating {
   const factors: RatingFactor[] = [];
@@ -94,23 +98,28 @@ function computeHKRating(cls: ClassificationResult): CompositeRating {
   let transDesc  = "";
 
   if (transitionState === "秋→冬") {
-    transScore = 2; transDesc = "秋→冬确认，港股低位买点（alpha=+1.32%）";
+    // 2w短期-2.49%**（负），32w+20%但不显著，置信度不足，降为+1
+    transScore = 1; transDesc = "秋→冬确认，港股均值回归蓄势（32w趋势正向，需耐心）";
   } else if (transitionState === "春→夏") {
-    transScore = -3; transDesc = "春→夏趋势确立，港股高位风险（alpha=-1.85%）";
+    // 全周期不显著（4w -1.87%(ns)），原-3无数据支撑，降为-2
+    transScore = -2; transDesc = "春→夏趋势确立，港股高位风险（夏季均值回归压力）";
   } else if (transitionState === "夏→秋") {
-    transScore = -2; transDesc = "夏→秋转折，港股下行确认（alpha=-1.54%）";
+    // 32w -19.22%**，信号强烈，保持-2
+    transScore = -2; transDesc = "夏→秋转折，港股下行确认（32w -19.22%**）";
   } else if (transitionState === "冬→春") {
-    transScore = 0; transDesc = "冬→春转折，港股方向不明（alpha=-0.41%，中性）";
+    transScore = 0; transDesc = "冬→春转折，港股方向不明（全周期不显著，中性）";
   } else {
     // 无明确转折，按当前阶段
     if (stage === "winter") {
-      transScore = 2; transDesc = "冬季低位，港股均值回归买点（alpha=+0.64%）";
+      // 全周期不显著（16w +7.20%(ns)），降为+1
+      transScore = 1; transDesc = "冬季低位，港股均值回归蓄势（方向正向但置信度有限）";
     } else if (stage === "summer") {
-      transScore = -1; transDesc = "夏季高位，港股存在回调压力";
+      transScore = -1; transDesc = "夏季高位，港股存在回调压力（32w -9.26%**）";
     } else if (stage === "autumn") {
-      transScore = -1; transDesc = "秋季转弱，港股下行风险";
+      // 4w -3.80%*，16w -12.07%*，低估风险，升为-2
+      transScore = -2; transDesc = "秋季持续下行，港股风险显著（4w -3.80%*，16w -12.07%*）";
     } else if (stage === "spring") {
-      transScore = 0; transDesc = "春季，港股方向中性（alpha=-0.23%，不显著）";
+      transScore = 0; transDesc = "春季，港股方向中性（全周期不显著）";
     }
   }
 
