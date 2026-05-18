@@ -278,12 +278,21 @@ export function computeCompositeRating(
         regScore = -1;
         regDesc  = "熊市×科技：卖出信号强化（alpha -4.14%*）";
       }
-      // 熊市×工业：买入轻微加分（+0.91%**，t=5.68）
-      if (isBuyCtx && sec === "工业" && regScore === 0) {
+      // 熊市×工业：买卖双向有效（买入+0.91%**,t=5.68 / 卖出-1.98%**,t=-3.63）
+      if (isBuyCtx && sec === "工业") {
         regScore = 1;
-        regDesc  = "熊市×工业：买入信号有效（alpha +0.91%**）";
+        regDesc  = "熊市×工业：买入信号有效（alpha +0.91%**，t=5.68）";
+      }
+      if (isSellCtx && sec === "工业") {
+        regScore = -1;
+        regDesc  = "熊市×工业：卖出信号有效（alpha -1.98%**，t=-3.63）";
       }
     } else if (regime === "牛市") {
+      // 牛市×工业：买入跨周期有效（alpha +0.58%**，t=3.61）
+      if (isBuyCtx && sec === "工业") {
+        regScore = 1;
+        regDesc  = "牛市×工业：买入信号有效（alpha +0.58%**，t=3.61）";
+      }
       // 牛市×金融：买入信号反向（alpha -1.30%**），需降级
       if (isBuyCtx && sec === "金融") {
         regScore = -1;
