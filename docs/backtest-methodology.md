@@ -232,3 +232,162 @@ n < 30 的分组标准误差很大，t 统计量不可信。应标注"样本不�
 npx vitest run src/test/classifierBacktest.test.ts --reporter=verbose
 npx vitest run src/test/hkBacktest.test.ts --reporter=verbose
 ```
+
+---
+
+## 信号矩阵框架（Signal Matrix v1）
+
+### 动机
+
+497只/3年/58,149个信号点的全量回测掩盖了关键结构性差异：
+
+- **同一信号在牛熊市方向可能相反**：春→夏在牛市可能 alpha > 0，在熊市 alpha < 0
+- **板块轮动节奏不同**：金融秋→冬均值回归 vs 新能源秋→冬可能持续下跌
+- **量能信号在熊市可能失效**：机构出货行为在熊市混淆 OBV 信号
+
+### 三维分析框架
+
+```
+维度一：市场制度    →  bull（牛市）/ bear（熊市）/ sideways（震荡）
+维度二：板块        →  金融 / 消费 / 医药 / 科技 / 新能源 / 周期 / 工业
+维度三：信号类型    →  transitionState / stage / rating / obvSignal
+```
+
+每个 (市场制度 × 板块) 格子输出持有期衰减曲线：10d/20d/40d/80d/160d 的 alpha + t 值。
+
+### 市场制度算法
+
+无需外部指数，用股票池内各股票的 `longTermBackground` 分布计算：
+
+```typescript
+function computeMarketRegime(
+  allPoints: BacktestPoint[],
+  targetDate: string,
+  windowDays = 5
+): "bull" | "bear" | "sideways" {
+  // 取 targetDate 前后 ±windowDays 内所有测试点的 longTermBackground
+  const nearby = allPoints.filter(p =>
+    Math.abs(dateDiffDays(p.date, targetDate)) <= windowDays
+  );
+  if (nearby.length < 20) return "sideways"; // 样本不足默认震荡
+
+  const bullCount = nearby.filter(p =>
+    p.longTermBg === "长期多头" || p.longTermBg === "上行趋势"
+  ).length;
+  const bearCount = nearby.filter(p =>
+    p.longTermBg === "下行趋势" || p.longTermBg === "长期空头"
+  ).length;
+  const total = nearby.length;
+
+  if (bullCount / total > 0.55) return "bull";
+  if (bearCount / total > 0.55) return "bear";
+  return "sideways";
+}
+```
+
+**实现顺序**：先跑完所有股票取得测试点集合，再对每个日期计算 marketRegime，最后打标签。
+
+### 板块标签
+
+```typescript
+// 读取 iCloud/stocktest/sector-map.json
+const sectorMap: Record<string, string[]> = JSON.parse(
+  fs.readFileSync("sector-map.json", "utf8")
+);
+// 反转为 symbol → sector 查找表
+const symbolSector = new Map<string, string>();
+for (const [sector, symbols] of Object.entries(sectorMap)) {
+  if (sector.startsWith("_")) continue; // 跳过 _meta 等元信息
+  for (const sym of symbols as string[]) {
+    symbolSector.set(sym, sector);
+  }
+}
+// 每个测试点打标签
+const sector = symbolSector.get(symbol) ?? "unknown";
+```
+
+### MVP 三个核心问题
+
+backtest-v5.ts 必须回答这三个问题，输出在 `crossRegimeComparison` 字段：
+
+1. **春→夏 在牛市和熊市的 alpha 差异**
+   - 期望：牛市 alpha ≥ 0，熊市 alpha < 0（当前统一评分 -1 可能过于保守或方向错误）
+   - 如果成立：将春→夏评分改为制度感知（牛市 +1，熊市 -2 或 -3）
+
+2. **秋→冬 在哪些板块最强**
+   - 期望：金融/周期板块机构持仓集中，均值回归最强（80d alpha > 3%，t > 2）
+   - 如果成立：为这些板块在秋→冬时额外加分（例如金融+0.5，周期+0.5）
+
+3. **量能验证信号（OBV 吸筹）在不同制度下是否失效**
+   - 期望：牛市吸筹信号显著正（t > 2），熊市不显著（t < 1.96）
+   - 如果成立：熊市中量能层权重上限从 ±2 降至 ±1
+
+### 输出格式规范
+
+完整格式见：`iCloud/stocktest/signal-atlas-spec.json`
+
+简要结构：
+```json
+{
+  "version": "v1",
+  "generated": "2026-06-01",
+  "market": "A",
+  "globalStats": { "byRating": { ... } },
+  "cells": [
+    {
+      "marketRegime": "bull",
+      "sector": "科技",
+      "sampleSize": 3840,
+      "topSignals": [
+        {
+          "dimension": "transitionState",
+          "value": "冬→春",
+          "decayCurve": {
+            "20d": { "n": 312, "mean": 0.015, "tStat": 2.8, "significant": true, "winRate": 0.57 },
+            "80d": { "n": 312, "mean": 0.034, "tStat": 3.4, "significant": true, "winRate": 0.61 }
+          },
+          "bestPeriod": "80d",
+          "bestAlpha": 0.034,
+          "bestTStat": 3.4
+        }
+      ],
+      "worstSignals": [ ... ]
+    }
+  ],
+  "crossRegimeComparison": { ... }
+}
+```
+
+筛选标准：`n ≥ 100`，`|tStat| ≥ 1.96`（topSignals 要求 mean > 0，worstSignals 要求 mean < 0）
+
+### 迭代更新循环
+
+```
+[Hermes] 每月 1 日运行 backtest-v5.ts
+       ↓
+产出 signal-atlas.json + bt-matrix-report.txt（iCloud/stocktest/）
+       ↓
+[Claude Code] 读取 atlas，与上次对比：
+  · 哪些信号 tStat 下降 > 1.0 → 减权或移除
+  · 新发现信号 tStat ≥ 2.5 且 n ≥ 200 → 纳入评分
+  · 市场制度切换时检查信号方向是否需要翻转
+       ↓
+更新 ratingEngine.ts → git commit → Hermes git pull → 验证回测
+```
+
+**触发更新的阈值**：
+- 信号失效：新数据中 tStat 下降 > 1.0（可能已失效）
+- 新信号纳入：tStat ≥ 2.5 且 n ≥ 200（统计上稳健）
+- 方向翻转：同一信号在牛/熊市 alpha 符号相反且两端均显著
+
+### backtest-v5.ts 参数配置
+
+| 参数 | 推荐值 | 说明 |
+|------|--------|------|
+| MIN_BARS | 150 | 同 V4 |
+| STEP | 10 | 降频以支持更多持有期 |
+| EVAL_PERIODS | [10, 20, 40, 80, 160] | 2/4/8/16/32 周衰减曲线 |
+| MIN_CELL_SAMPLE | 100 | 低于此值的格子不输出信号 |
+| REGIME_WINDOW | 5 | 计算市场制度时的日期窗口（±5 交易日）|
+
+**注意**：step=10 时，160d 持有期仍有约 16x 重叠，t 检验 SE 可能低估。在报告中标注此风险，但不纠正（与竞争基准一致）。
