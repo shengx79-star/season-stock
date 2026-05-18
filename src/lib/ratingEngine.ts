@@ -250,15 +250,18 @@ export function computeCompositeRating(
     if (volScore !== 0) push(factors, "量能验证", volDesc, volScore);
   }
 
-  // ── 第四层：制度×板块调整（-1 ~ +1）────────────────────────────────────────
+  // ── 汇总前三层，决定评级 ────────────────────────────────────────────────────
+  // 必须在 Layer 4 之前计算评级：Layer 4 的 ±1 仅作展示用途，不参与阈值判断。
+  // 否则 score=3→4 的跨越会把制度强化的边缘股票膨胀到强烈买入池，稀释其 alpha。
+  const baseTotal = factors.reduce((s, f) => s + f.score, 0);
+  const level = computeLevel(baseTotal, longTermBg, longTermMom);
+
+  // ── 第四层：制度×板块调整（-1 ~ +1，仅展示）────────────────────────────────
   // 基于 76,495 点×860 只信号矩阵回测（signal-atlas-v1）
-  // 只在方向明确时调整，±1 封顶，避免覆盖基础信号
+  // 调整只影响 totalScore 展示，不改变 level（避免边缘股票跨越强烈买入阈值）
   if (regime && sector) {
-    const preTotal = factors.reduce((s, f) => s + f.score, 0);
-    // 门槛设为 ±3（非 ±2），只对强信号叠加制度调整
-    // preTotal=2 的边缘积极买入不应因制度跨越强烈买入阈值（会过度稀释）
-    const isBuyCtx  = preTotal >= 3;
-    const isSellCtx = preTotal <= -3;
+    const isBuyCtx  = baseTotal >= 2;
+    const isSellCtx = baseTotal <= -2;
     const sec = normalizeSector(sector);
 
     let regScore = 0;
@@ -302,10 +305,8 @@ export function computeCompositeRating(
     if (regScore !== 0) push(factors, "制度板块", regDesc, regScore);
   }
 
-  // ── 汇总 & 评级 ─────────────────────────────────────────────────────────
+  // totalScore 含 Layer 4（供展示），level 基于前三层（供决策）
   const total = factors.reduce((s, f) => s + f.score, 0);
-  const level = computeLevel(total, longTermBg, longTermMom);
-
   return { level, totalScore: total, factors };
 }
 
