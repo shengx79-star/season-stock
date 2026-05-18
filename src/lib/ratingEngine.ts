@@ -255,8 +255,10 @@ export function computeCompositeRating(
   // 只在方向明确时调整，±1 封顶，避免覆盖基础信号
   if (regime && sector) {
     const preTotal = factors.reduce((s, f) => s + f.score, 0);
-    const isBuyCtx  = preTotal >= 2;
-    const isSellCtx = preTotal <= -2;
+    // 门槛设为 ±3（非 ±2），只对强信号叠加制度调整
+    // preTotal=2 的边缘积极买入不应因制度跨越强烈买入阈值（会过度稀释）
+    const isBuyCtx  = preTotal >= 3;
+    const isSellCtx = preTotal <= -3;
     const sec = normalizeSector(sector);
 
     let regScore = 0;
