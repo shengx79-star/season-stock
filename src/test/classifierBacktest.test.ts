@@ -417,7 +417,7 @@ describe("择时 Alpha 回测（扩大版，50只/3.5年）", () => {
       console.log(`\n（* 表示 95% 置信水平下显著，|t| ≥ 1.96）`);
 
       // 断言1：极端 totalScore 单调性（最有统计意义的验证）
-      const topScoreAlpha = stats(all.filter(p => p.totalScore >= 5).map(p => p.alpha));
+      const topScoreAlpha = stats(all.filter(p => p.totalScore >= 4).map(p => p.alpha));
       const botScoreAlpha = stats(all.filter(p => p.totalScore <= -4).map(p => p.alpha));
       if (topScoreAlpha.n > 0 && botScoreAlpha.n > 0) {
         expect(topScoreAlpha.mean).toBeGreaterThan(botScoreAlpha.mean);
