@@ -132,7 +132,8 @@ function computeHKRating(cls: ClassificationResult): CompositeRating {
 
   const LEVELS: RatingLevel[] = ["强烈买入", "积极买入", "观望", "谨慎", "回避"];
   let level: RatingLevel;
-  if      (total >= 4)  level = "强烈买入";
+  // HK 评分上限为 +3（Layer1 最高 +2，Layer2 最高 +1），故阈值降为 >=3
+  if      (total >= 3)  level = "强烈买入";
   else if (total >= 2)  level = "积极买入";
   else if (total >= -1) level = "观望";
   else if (total >= -3) level = "谨慎";
